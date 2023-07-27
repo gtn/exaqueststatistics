@@ -17,12 +17,12 @@
 /**
  * Quiz statistics report, table for showing statistics of each question in the quiz.
  *
- * @package   quiz_exaquest_statistics
+ * @package   quiz_exaqueststatistics
  * @copyright 2008 Jamie Pratt
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace exaquest_statistics;
+namespace exaqueststatistics;
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->libdir . '/tablelib.php');
@@ -42,7 +42,7 @@ use question_bank;
  * @copyright 2008 Jamie Pratt
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_exaquest_statistics_table extends flexible_table
+class quiz_exaqueststatistics_table extends flexible_table
 {
     /** @var object the quiz settings. */
     protected $quiz;
@@ -77,7 +77,7 @@ class quiz_exaquest_statistics_table extends flexible_table
         $headers = array();
 
         $columns[] = 'number';
-        $headers[] = get_string('questionnumber', 'quiz_exaquest_statistics');
+        $headers[] = get_string('questionnumber', 'quiz_exaqueststatistics');
 
         if (!$this->is_downloading()) {
             $columns[] = 'icon';
@@ -86,37 +86,37 @@ class quiz_exaquest_statistics_table extends flexible_table
             $headers[] = '';
         } else {
             $columns[] = 'qtype';
-            $headers[] = get_string('questiontype', 'quiz_exaquest_statistics');
+            $headers[] = get_string('questiontype', 'quiz_exaqueststatistics');
         }
 
         $columns[] = 'name';
         $headers[] = get_string('questionname', 'quiz');
 
         $columns[] = 's';
-        $headers[] = get_string('attempts', 'quiz_exaquest_statistics');
+        $headers[] = get_string('attempts', 'quiz_exaqueststatistics');
 
         if ($s > 1) {
             $columns[] = 'facility';
-            $headers[] = get_string('facility', 'quiz_exaquest_statistics');
+            $headers[] = get_string('facility', 'quiz_exaqueststatistics');
 
             $columns[] = 'sd';
-            $headers[] = get_string('standarddeviationq', 'quiz_exaquest_statistics');
+            $headers[] = get_string('standarddeviationq', 'quiz_exaqueststatistics');
         }
 
         $columns[] = 'random_guess_score';
-        $headers[] = get_string('random_guess_score', 'quiz_exaquest_statistics');
+        $headers[] = get_string('random_guess_score', 'quiz_exaqueststatistics');
 
         $columns[] = 'intended_weight';
-        $headers[] = get_string('intended_weight', 'quiz_exaquest_statistics');
+        $headers[] = get_string('intended_weight', 'quiz_exaqueststatistics');
 
         $columns[] = 'effective_weight';
-        $headers[] = get_string('effective_weight', 'quiz_exaquest_statistics');
+        $headers[] = get_string('effective_weight', 'quiz_exaqueststatistics');
 
         $columns[] = 'discrimination_index';
-        $headers[] = get_string('discrimination_index', 'quiz_exaquest_statistics');
+        $headers[] = get_string('discrimination_index', 'quiz_exaqueststatistics');
 
         $columns[] = 'discriminative_efficiency';
-        $headers[] = get_string('discriminative_efficiency', 'quiz_exaquest_statistics');
+        $headers[] = get_string('discriminative_efficiency', 'quiz_exaqueststatistics');
 
         $this->define_columns($columns);
         $this->define_headers($headers);
@@ -251,7 +251,7 @@ class quiz_exaquest_statistics_table extends flexible_table
             $a = new stdClass();
             $a->name = $name;
             $a->variant = $questionstat->variant;
-            $name = get_string('nameforvariant', 'quiz_exaquest_statistics', $a);
+            $name = get_string('nameforvariant', 'quiz_exaqueststatistics', $a);
         }
 
         if ($this->is_downloading()) {
@@ -264,20 +264,20 @@ class quiz_exaquest_statistics_table extends flexible_table
                 // Variant of a sub-question.
                 $url = new moodle_url($baseurl, array('qid' => $questionstat->questionid, 'variant' => $questionstat->variant));
                 $name = html_writer::link($url, $name, array('title' => get_string('detailedanalysisforvariant',
-                    'quiz_exaquest_statistics',
+                    'quiz_exaqueststatistics',
                     $questionstat->variant)));
             } else if ($questionstat->slot) {
                 // Variant of a question in a slot.
                 $url = new moodle_url($baseurl, array('slot' => $questionstat->slot, 'variant' => $questionstat->variant));
                 $name = html_writer::link($url, $name, array('title' => get_string('detailedanalysisforvariant',
-                    'quiz_exaquest_statistics',
+                    'quiz_exaqueststatistics',
                     $questionstat->variant)));
             }
         } else {
             if ($questionstat->subquestion && !$questionstat->get_variants()) {
                 // Sub question without variants.
                 $url = new moodle_url($baseurl, array('qid' => $questionstat->questionid));
-                $name = html_writer::link($url, $name, array('title' => get_string('detailedanalysis', 'quiz_exaquest_statistics')));
+                $name = html_writer::link($url, $name, array('title' => get_string('detailedanalysis', 'quiz_exaqueststatistics')));
             } else if ($baseurl->param('slot') === null && $questionstat->slot) {
                 // Question in a slot, we are not on a page showing structural analysis of one slot,
                 // we don't want linking on those pages.
@@ -290,12 +290,12 @@ class quiz_exaquest_statistics_table extends flexible_table
                     // analysis page with specific text to clearly indicate the link to the user.
                     // Random and variant question rows will render the name without a link to improve clarity
                     // in the UI.
-                    $name = html_writer::div(get_string('rangeofvalues', 'quiz_exaquest_statistics'));
+                    $name = html_writer::div(get_string('rangeofvalues', 'quiz_exaqueststatistics'));
                 } else if (!$israndomquestion && !$questionstat->get_variants() && !$questionstat->get_sub_question_ids()) {
                     // Question cannot be broken down into sub-questions or variants. Link will show response analysis page.
                     $name = html_writer::link($url,
                         $name,
-                        array('title' => get_string('detailedanalysis', 'quiz_exaquest_statistics')));
+                        array('title' => get_string('detailedanalysis', 'quiz_exaqueststatistics')));
                 }
             }
         }
@@ -306,9 +306,9 @@ class quiz_exaquest_statistics_table extends flexible_table
         }
 
         if ($this->is_calculated_question_summary($questionstat)) {
-            $name .= html_writer::link($url, get_string('viewanalysis', 'quiz_exaquest_statistics'));
+            $name .= html_writer::link($url, get_string('viewanalysis', 'quiz_exaqueststatistics'));
         } else if (!empty($questionstat->minmedianmaxnotice)) {
-            $name = get_string($questionstat->minmedianmaxnotice, 'quiz_exaquest_statistics') . '<br />' . $name;
+            $name = get_string($questionstat->minmedianmaxnotice, 'quiz_exaqueststatistics') . '<br />' . $name;
         }
 
         return $name;
@@ -427,7 +427,7 @@ class quiz_exaquest_statistics_table extends flexible_table
             } else {
                 list(, $negcovar) = $questionstat->get_min_max_of('negcovar');
                 if ($negcovar) {
-                    $min = get_string('negcovar', 'quiz_exaquest_statistics');
+                    $min = get_string('negcovar', 'quiz_exaqueststatistics');
                 }
 
                 return $this->format_range($min, $max);
@@ -435,11 +435,11 @@ class quiz_exaquest_statistics_table extends flexible_table
         } else if (is_null($questionstat->effectiveweight)) {
             return '';
         } else if ($questionstat->negcovar) {
-            $negcovar = get_string('negcovar', 'quiz_exaquest_statistics');
+            $negcovar = get_string('negcovar', 'quiz_exaqueststatistics');
 
             if (!$this->is_downloading()) {
                 $negcovar = html_writer::tag('div',
-                    $negcovar . $OUTPUT->help_icon('negcovar', 'quiz_exaquest_statistics'),
+                    $negcovar . $OUTPUT->help_icon('negcovar', 'quiz_exaqueststatistics'),
                     array('class' => 'negcovar'));
             }
 
@@ -554,7 +554,7 @@ class quiz_exaquest_statistics_table extends flexible_table
             $a->min = $min;
             $a->max = $max;
 
-            return get_string('rangebetween', 'quiz_exaquest_statistics', $a);
+            return get_string('rangebetween', 'quiz_exaqueststatistics', $a);
         }
     }
 

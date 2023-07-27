@@ -17,7 +17,7 @@
 /**
  * Quiz statistics report version information.
  *
- * @package   quiz_exaquest_statistics
+ * @package   quiz_exaqueststatistics
  * @copyright 2008 Jamie Pratt
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -26,4 +26,4 @@ defined('MOODLE_INTERNAL') || die();
 
 $plugin->version   = 2023072700;
 $plugin->requires  = 2022111800;
-$plugin->component = 'quiz_exaquest_statistics';
+$plugin->component = 'quiz_exaqueststatistics';

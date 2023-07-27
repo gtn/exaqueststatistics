@@ -1,4 +1,4 @@
-@mod @mod_quiz @quiz @quiz_exaquest_statistics
+@mod @mod_quiz @quiz @quiz_exaqueststatistics
 Feature: Robustness of the statistics calculations with missing qusetions
   In order to be able to install and uninstall plugins
   As a teacher

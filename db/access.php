@@ -17,7 +17,7 @@
 /**
  * Capability definitions for the quiz statistics report.
  *
- * @package   quiz_exaquest_statistics
+ * @package   quiz_exaqueststatistics
  * @copyright 2008 Jamie Pratt
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $capabilities = array(
-    'quiz/exaquest_statistics:view' => array(
+    'quiz/exaqueststatistics:view' => array(
         'captype' => 'read',
         'contextlevel' => CONTEXT_MODULE,
         'archetypes' => array(

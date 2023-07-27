@@ -14,11 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace exaquest_statistics\classes\task;
+namespace exaqueststatistics\classes\task;
 
 use quiz_attempt;
 use quiz;
-use exaquest_statistics\quiz_statistics_report;
+use exaqueststatistics\quiz_exaqueststatistics_report;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -30,7 +30,7 @@ require_once($CFG->dirroot . '/mod/quiz/report/statistics/report.php');
 /**
  * Re-calculate question statistics.
  *
- * @package    quiz_exaquest_statistics
+ * @package    quiz_exaqueststatistics
  * @copyright  2022 Catalyst IT Australia Pty Ltd
  * @author     Nathan Nguyen <nathannguyen@catalyst-au.net>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -40,7 +40,7 @@ class recalculate extends \core\task\scheduled_task {
     const TIME_LIMIT = 3600;
 
     public function get_name(): string {
-        return get_string('recalculatetask', 'quiz_exaquest_statistics');
+        return get_string('recalculatetask', 'quiz_exaqueststatistics');
     }
 
     public function execute(): void {
@@ -48,7 +48,7 @@ class recalculate extends \core\task\scheduled_task {
         $stoptime = time() + self::TIME_LIMIT;
         $dateformat = get_string('strftimedatetimeshortaccurate', 'core_langconfig');
 
-        // TODO: MDL-75197, add quizid in quiz_exaquest_statistics so that it is simpler to find quizzes for stats calculation.
+        // TODO: MDL-75197, add quizid in quiz_exaqueststatistics so that it is simpler to find quizzes for stats calculation.
         // Only calculate stats for quizzes which have recently finished attempt.
         $sql = "
             SELECT q.id AS quizid,
@@ -85,10 +85,10 @@ class recalculate extends \core\task\scheduled_task {
             $quizobj = quiz::create($attempt->quizid);
             $quiz = $quizobj->get_quiz();
             // Hash code for question stats option in question bank.
-            $qubaids = quiz_exaquest_statistics_qubaids_condition($quiz->id, new \core\dml\sql_join(), $quiz->grademethod);
+            $qubaids = quiz_exaqueststatistics_qubaids_condition($quiz->id, new \core\dml\sql_join(), $quiz->grademethod);
 
             // Check if there is any existing question stats, and it has been calculated after latest quiz attempt.
-            $lateststatstime = $DB->get_field('quiz_exaquest_statistics', 'COALESCE(MAX(timemodified), 0)',
+            $lateststatstime = $DB->get_field('quiz_exaqueststatistics', 'COALESCE(MAX(timemodified), 0)',
                     ['hashcode' => $qubaids->get_hash_code()]);
 
             if ($lateststatstime >= $attempt->mostrecentattempttime) {
@@ -100,7 +100,7 @@ class recalculate extends \core\task\scheduled_task {
             mtrace("    Calculating statistics for $attempt->numberofattempts attempts, starting at " .
                     userdate(time(), $dateformat) . " ...");
             try {
-                $report = new quiz_statistics_report();
+                $report = new quiz_exaqueststatistics_report();
                 $report->clear_cached_data($qubaids);
                 $report->calculate_questions_stats_for_question_bank($quiz->id);
                 mtrace("    Calculations completed at " . userdate(time(), $dateformat) . ".");

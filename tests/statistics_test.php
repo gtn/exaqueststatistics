@@ -17,15 +17,15 @@
 /**
  * Unit tests for (some of) /question/engine/statistics.php
  *
- * @package   quiz_exaquest_statistics
+ * @package   quiz_exaqueststatistics
  * @category  test
  * @copyright 2008 Jamie Pratt
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace exaquest_statistics\tests;
+namespace exaqueststatistics\tests;
 
-use quiz_exaquest_statistics\qubaid_condition;
+use quiz_exaqueststatistics\qubaid_condition;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -59,7 +59,7 @@ class testable_question_statistics extends \core_question\statistics\questions\c
      */
     protected $lateststeps;
 
-    protected $statscollectionclassname = '\quiz_exaquest_statistics\testable_all_calculated_for_qubaid_condition';
+    protected $statscollectionclassname = '\quiz_exaqueststatistics\testable_all_calculated_for_qubaid_condition';
 
     public function set_step_data($states) {
         $this->lateststeps = $states;

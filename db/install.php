@@ -16,7 +16,7 @@
 
 /**
  * Post-install script for the quiz statistics report.
- * @package   quiz_exaquest_statistics
+ * @package   quiz_exaqueststatistics
  * @copyright 2010 Petr Skoda (http://skodak.org)
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -26,15 +26,15 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * Post-install script
  */
-function xmldb_quiz_exaquest_statistics_install() {
+function xmldb_quiz_exaqueststatistics_install() {
     global $DB;
 
     $dbman = $DB->get_manager();
 
     $record = new stdClass();
-    $record->name         = 'statistics';
-    $record->displayorder = 8000;
-    $record->capability   = 'quiz/exaquest_statistics:view';
+    $record->name         = 'exaqueststatistics';
+    $record->displayorder = 5000;
+    $record->capability   = 'quiz/exaqueststatistics:view';
 
     if ($dbman->table_exists('quiz_reports')) {
         $DB->insert_record('quiz_reports', $record);

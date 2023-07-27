@@ -1,4 +1,4 @@
-@mod @mod_quiz @quiz @quiz_exaquest_statistics
+@mod @mod_quiz @quiz @quiz_exaqueststatistics
 Feature: Basic use of the Statistics report
   In order to see how my students are progressing
   As a teacher

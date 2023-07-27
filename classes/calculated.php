@@ -14,9 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace exaquest_statistics\classes;
+namespace exaqueststatistics\classes;
 
-use exaquest_statistics\classes\calculator;
+use exaqueststatistics\classes\calculator;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -25,9 +25,9 @@ defined('MOODLE_INTERNAL') || die();
  *
  * These quiz statistics calculations are described here :
  *
- * http://docs.moodle.org/dev/quiz_exaquest_statistics_calculations#Test_statistics
+ * http://docs.moodle.org/dev/quiz_exaqueststatistics_calculations#Test_statistics
  *
- * @package    quiz_exaquest_statistics
+ * @package    quiz_exaqueststatistics
  * @copyright  2013 The Open University
  * @author     James Pratt me@jamiep.org
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -53,7 +53,7 @@ class calculated {
      */
     public $whichattempts;
 
-    /* Following stats all described here : http://docs.moodle.org/dev/quiz_exaquest_statistics_calculations#Test_statistics  */
+    /* Following stats all described here : http://docs.moodle.org/dev/quiz_exaqueststatistics_calculations#Test_statistics  */
 
     public $firstattemptscount = 0;
 
@@ -145,8 +145,8 @@ class calculated {
 
         // General information about the quiz.
         $quizinfo = array();
-        $quizinfo[get_string('quizname', 'quiz_exaquest_statistics')] = format_string($quiz->name);
-        $quizinfo[get_string('coursename', 'quiz_exaquest_statistics')] = format_string($course->fullname);
+        $quizinfo[get_string('quizname', 'quiz_exaqueststatistics')] = format_string($quiz->name);
+        $quizinfo[get_string('coursename', 'quiz_exaqueststatistics')] = format_string($course->fullname);
         if ($cm->idnumber) {
             $quizinfo[get_string('idnumbermod')] = $cm->idnumber;
         }
@@ -157,7 +157,7 @@ class calculated {
             $quizinfo[get_string('quizclose', 'quiz')] = userdate($quiz->timeclose);
         }
         if ($quiz->timeopen && $quiz->timeclose) {
-            $quizinfo[get_string('duration', 'quiz_exaquest_statistics')] =
+            $quizinfo[get_string('duration', 'quiz_exaqueststatistics')] =
                 format_time($quiz->timeclose - $quiz->timeopen);
         }
 
@@ -187,7 +187,7 @@ class calculated {
                     $formattedvalue = $value;
             }
 
-            $quizinfo[get_string($property, 'quiz_exaquest_statistics',
+            $quizinfo[get_string($property, 'quiz_exaqueststatistics',
                                  calculator::using_attempts_lang_string($this->whichattempts))] = $formattedvalue;
         }
 
@@ -228,12 +228,12 @@ class calculated {
         }
 
         // Store the data.
-        $DB->insert_record('quiz_exaquest_statistics', $toinsert);
+        $DB->insert_record('quiz_exaqueststatistics', $toinsert);
 
     }
 
     /**
-     * Given a record from 'quiz_exaquest_statistics' table load the data into the properties of this class.
+     * Given a record from 'quiz_exaqueststatistics' table load the data into the properties of this class.
      *
      * @param $record \stdClass from db.
      */

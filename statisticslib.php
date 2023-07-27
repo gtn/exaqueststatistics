@@ -17,7 +17,7 @@
 /**
  * Common functions for the quiz statistics report.
  *
- * @package    quiz_exaquest_statistics
+ * @package    quiz_exaqueststatistics
  * @copyright  2013 The Open University
  * @author     James Pratt me@jamiep.org
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -37,7 +37,7 @@ defined('MOODLE_INTERNAL') || die;
  * @param bool   $includeungraded whether to fetch ungraded attempts too
  * @return array FROM and WHERE sql fragments and sql params
  */
-function quiz_exaquest_statistics_attempts_sql($quizid, \core\dml\sql_join $groupstudentsjoins,
+function quiz_exaqueststatistics_attempts_sql($quizid, \core\dml\sql_join $groupstudentsjoins,
         $whichattempts = QUIZ_GRADEAVERAGE, $includeungraded = false) {
     $fromqa = "{quiz_attempts} quiza ";
     $whereqa = 'quiza.quiz = :quizid AND quiza.preview = 0 AND quiza.state = :quizstatefinished';
@@ -63,7 +63,7 @@ function quiz_exaquest_statistics_attempts_sql($quizid, \core\dml\sql_join $grou
 }
 
 /**
- * Return a {@link qubaid_condition} from the values returned by {@link quiz_exaquest_statistics_attempts_sql}.
+ * Return a {@link qubaid_condition} from the values returned by {@link quiz_exaqueststatistics_attempts_sql}.
  *
  * @param int     $quizid
  * @param \core\dml\sql_join $groupstudentsjoins Contains joins, wheres, params
@@ -74,9 +74,9 @@ function quiz_exaquest_statistics_attempts_sql($quizid, \core\dml\sql_join $grou
  * @param bool    $includeungraded
  * @return        \qubaid_join
  */
-function quiz_exaquest_statistics_qubaids_condition($quizid, \core\dml\sql_join $groupstudentsjoins,
+function quiz_exaqueststatistics_qubaids_condition($quizid, \core\dml\sql_join $groupstudentsjoins,
         $whichattempts = QUIZ_GRADEAVERAGE, $includeungraded = false) {
-    list($fromqa, $whereqa, $qaparams) = quiz_exaquest_statistics_attempts_sql(
+    list($fromqa, $whereqa, $qaparams) = quiz_exaqueststatistics_attempts_sql(
             $quizid, $groupstudentsjoins, $whichattempts, $includeungraded);
     return new qubaid_join($fromqa, 'quiza.uniqueid', $whereqa, $qaparams);
 }
@@ -87,8 +87,8 @@ function quiz_exaquest_statistics_qubaids_condition($quizid, \core\dml\sql_join 
  * @return string colour name.
  * @deprecated since Moodle 3.2
  */
-function quiz_exaquest_statistics_graph_get_new_colour() {
-    debugging('The function quiz_exaquest_statistics_graph_get_new_colour() is deprecated, please do not use it any more. '
+function quiz_exaqueststatistics_graph_get_new_colour() {
+    debugging('The function quiz_exaqueststatistics_graph_get_new_colour() is deprecated, please do not use it any more. '
         . 'Colours will be handled by the charting library directly.', DEBUG_DEVELOPER);
 
     static $colourindex = -1;

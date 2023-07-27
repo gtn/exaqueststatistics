@@ -15,19 +15,19 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Privacy Subsystem implementation for quiz_exaquest_statistics.
+ * Privacy Subsystem implementation for quiz_exaqueststatistics.
  *
- * @package    quiz_exaquest_statistics
+ * @package    quiz_exaqueststatistics
  * @copyright  2018 Andrew Nicols <andrew@nicols.co.uk>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace exaquest_statistics\classes\privacy;
+namespace exaqueststatistics\classes\privacy;
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Privacy Subsystem for quiz_exaquest_statistics implementing null_provider.
+ * Privacy Subsystem for quiz_exaqueststatistics implementing null_provider.
  *
  * @copyright  2018 Andrew Nicols <andrew@nicols.co.uk>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later

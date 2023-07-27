@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace exaquest_statistics\classes;
-use exaquest_statistics\classes\calculated;
+namespace exaqueststatistics\classes;
+use exaqueststatistics\classes\calculated;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -24,9 +24,9 @@ defined('MOODLE_INTERNAL') || die();
  *
  * These quiz statistics calculations are described here :
  *
- * http://docs.moodle.org/dev/quiz_exaquest_statistics_calculations#Test_statistics
+ * http://docs.moodle.org/dev/quiz_exaqueststatistics_calculations#Test_statistics
  *
- * @package    quiz_exaquest_statistics
+ * @package    quiz_exaqueststatistics
  * @copyright  2013 The Open University
  * @author     James Pratt me@jamiep.org
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -76,7 +76,7 @@ class calculator {
 
             // Recalculate sql again this time possibly including test for first attempt.
             list($fromqa, $whereqa, $qaparams) =
-                quiz_exaquest_statistics_attempts_sql($quizid, $groupstudentsjoins, $whichattempts);
+                quiz_exaqueststatistics_attempts_sql($quizid, $groupstudentsjoins, $whichattempts);
 
             $quizstats->median = $this->median($s, $fromqa, $whereqa, $qaparams);
             $this->progress->progress(2);
@@ -117,7 +117,7 @@ class calculator {
                 }
             }
 
-            $quizstats->cache(quiz_exaquest_statistics_qubaids_condition($quizid, $groupstudentsjoins, $whichattempts));
+            $quizstats->cache(quiz_exaqueststatistics_qubaids_condition($quizid, $groupstudentsjoins, $whichattempts));
         }
         $this->progress->end_progress();
         return $quizstats;
@@ -136,7 +136,7 @@ class calculator {
         global $DB;
 
         $timemodified = time() - self::TIME_TO_CACHE;
-        $fromdb = $DB->get_record_select('quiz_exaquest_statistics', 'hashcode = ? AND timemodified > ?',
+        $fromdb = $DB->get_record_select('quiz_exaqueststatistics', 'hashcode = ? AND timemodified > ?',
                                          array($qubaids->get_hash_code(), $timemodified));
         $stats = new calculated();
         $stats->populate_from_record($fromdb);
@@ -153,7 +153,7 @@ class calculator {
         global $DB;
 
         $timemodified = time() - self::TIME_TO_CACHE;
-        return $DB->get_field_select('quiz_exaquest_statistics', 'timemodified', 'hashcode = ? AND timemodified > ?',
+        return $DB->get_field_select('quiz_exaqueststatistics', 'timemodified', 'hashcode = ? AND timemodified > ?',
                                          array($qubaids->get_hash_code(), $timemodified));
     }
 
@@ -170,11 +170,11 @@ class calculator {
      * @return string the appropriate lang string to describe this option.
      */
     public static function using_attempts_lang_string($whichattempts) {
-         return get_string(static::using_attempts_string_id($whichattempts), 'quiz_exaquest_statistics');
+         return get_string(static::using_attempts_string_id($whichattempts), 'quiz_exaqueststatistics');
     }
 
     /**
-     * Given a particular quiz grading method return a string id for use as a field name prefix in mdl_quiz_exaquest_statistics or to
+     * Given a particular quiz grading method return a string id for use as a field name prefix in mdl_quiz_exaqueststatistics or to
      * fetch the appropriate language string describing which attempts contribute to grade.
      *
      * Note internally we use the grading method constants to represent which attempts we are calculating statistics for, each
@@ -214,7 +214,7 @@ class calculator {
         $attempttotals = new \stdClass();
         foreach (array_keys(quiz_get_grading_options()) as $which) {
 
-            list($fromqa, $whereqa, $qaparams) = quiz_exaquest_statistics_attempts_sql($quizid, $groupstudentsjoins, $which);
+            list($fromqa, $whereqa, $qaparams) = quiz_exaqueststatistics_attempts_sql($quizid, $groupstudentsjoins, $which);
 
             $fromdb = $DB->get_record_sql("SELECT COUNT(*) AS rcount, AVG(sumgrades) AS average FROM $fromqa WHERE $whereqa",
                                             $qaparams);
@@ -228,7 +228,7 @@ class calculator {
     /**
      * Median mark.
      *
-     * http://docs.moodle.org/dev/quiz_exaquest_statistics_calculations#Median_Score
+     * http://docs.moodle.org/dev/quiz_exaqueststatistics_calculations#Median_Score
      *
      * @param $s integer count of attempts
      * @param $fromqa string

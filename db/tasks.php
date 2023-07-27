@@ -17,7 +17,7 @@
 /**
  * Legacy Cron Quiz Reports Task
  *
- * @package    quiz_exaquest_statistics
+ * @package    quiz_exaqueststatistics
  * @copyright  2017 Michael Hughes, University of Strathclyde
  * @author Michael Hughes <michaelhughes@strath.ac.uk>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -28,7 +28,7 @@ defined('MOODLE_INTERNAL') || die();
 
 $tasks = [
     [
-        'classname' => 'exaquest_statistics\classes\task\recalculate',
+        'classname' => 'exaqueststatistics\classes\task\recalculate',
         'blocking' => 0,
         'minute' => 'R',
         'hour' => '*/4',

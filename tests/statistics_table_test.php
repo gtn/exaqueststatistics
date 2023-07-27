@@ -14,9 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace exaquest_statistics\tests;
+namespace exaqueststatistics\tests;
 
-use exaquest_statistics\quiz_exaquest_statistics_table;
+use exaqueststatistics\quiz_exaqueststatistics_table;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -24,9 +24,9 @@ global $CFG;
 require_once($CFG->dirroot . '/mod/quiz/report/statistics/statistics_table.php');
 
 /**
- * Class quiz_exaquest_statistics_statistics_table_testcase
+ * Class quiz_exaqueststatistics_statistics_table_testcase
  *
- * @package    quiz_exaquest_statistics
+ * @package    quiz_exaqueststatistics
  * @category   test
  * @copyright  2018 Shamim Rezaie <shamim@moodle.com>
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -34,10 +34,10 @@ require_once($CFG->dirroot . '/mod/quiz/report/statistics/statistics_table.php')
 class statistics_table_test extends \advanced_testcase {
 
     public function test_format_percentage() {
-        $table = new quiz_exaquest_statistics_table();
+        $table = new quiz_exaqueststatistics_table();
 
         // The format_percentage method is protected. Use Reflection to call the method.
-        $reflector = new \ReflectionClass('exaquest_statistics\quiz_exaquest_statistics_table');
+        $reflector = new \ReflectionClass('exaqueststatistics\quiz_exaqueststatistics_table');
         $method = $reflector->getMethod('format_percentage');
         $method->setAccessible(true);
 
@@ -53,10 +53,10 @@ class statistics_table_test extends \advanced_testcase {
     }
 
     public function test_format_percentage_range() {
-        $table = new quiz_exaquest_statistics_table();
+        $table = new quiz_exaqueststatistics_table();
 
         // The format_percentage_range method is protected. Use Reflection to call the method.
-        $reflector = new \ReflectionClass('exaquest_statistics\quiz_exaquest_statistics_table');
+        $reflector = new \ReflectionClass('exaqueststatistics\quiz_exaqueststatistics_table');
         $method = $reflector->getMethod('format_percentage_range');
         $method->setAccessible(true);
 
@@ -72,10 +72,10 @@ class statistics_table_test extends \advanced_testcase {
     }
 
     public function test_format_range() {
-        $table = new quiz_exaquest_statistics_table();
+        $table = new quiz_exaqueststatistics_table();
 
         // The format_range method is protected. Use Reflection to call the method.
-        $reflector = new \ReflectionClass('exaquest_statistics\quiz_exaquest_statistics_table');
+        $reflector = new \ReflectionClass('exaqueststatistics\quiz_exaqueststatistics_table');
         $method = $reflector->getMethod('format_range');
         $method->setAccessible(true);
 

@@ -1,4 +1,4 @@
-@mod @mod_quiz @quiz @quiz_exaquest_statistics
+@mod @mod_quiz @quiz @quiz_exaqueststatistics
 Feature: Robustness of the statistics calculations with random essays
   In order not to see errors
   As a teacher

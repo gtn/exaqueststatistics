@@ -17,7 +17,7 @@
 /**
  * Standard plugin entry points of the quiz statistics report.
  *
- * @package   quiz_exaquest_statistics
+ * @package   quiz_exaqueststatistics
  * @copyright 2011 The Open University
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -27,7 +27,7 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * Serve questiontext files in the question text when they are displayed in this report.
  *
- * @package  quiz_exaquest_statistics
+ * @package  quiz_exaqueststatistics
  * @category files
  * @param context $previewcontext the quiz context
  * @param int $questionid the question id.
@@ -38,7 +38,7 @@ defined('MOODLE_INTERNAL') || die();
  * @param bool $forcedownload.
  * @param array $options additional options affecting the file serving.
  */
-function quiz_exaquest_statistics_question_preview_pluginfile($previewcontext, $questionid,
+function quiz_exaqueststatistics_question_preview_pluginfile($previewcontext, $questionid,
         $filecontext, $filecomponent, $filearea, $args, $forcedownload, $options = array()) {
     global $CFG;
     require_once($CFG->dirroot . '/mod/quiz/locallib.php');
@@ -48,7 +48,7 @@ function quiz_exaquest_statistics_question_preview_pluginfile($previewcontext, $
 
     // Assume only trusted people can see this report. There is no real way to
     // validate questionid, becuase of the complexity of random quetsions.
-    require_capability('quiz/exaquest_statistics:view', $context);
+    require_capability('quiz/exaqueststatistics:view', $context);
 
     $fs = get_file_storage();
     $relativepath = implode('/', $args);

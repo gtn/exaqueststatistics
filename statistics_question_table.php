@@ -17,13 +17,13 @@
 /**
  * Quiz statistics report, table for showing response analysis for a particular question (or sub question).
  *
- * @package   quiz_exaquest_statistics
+ * @package   quiz_exaqueststatistics
  * @copyright 2014 Open University
  * @author    James Pratt <me@jamiep.org>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace exaquest_statistics;
+namespace exaqueststatistics;
 use flexible_table;
 use moodle_url;
 
@@ -43,7 +43,7 @@ require_once($CFG->libdir . '/tablelib.php');
  * @author    James Pratt <me@jamiep.org>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_exaquest_statistics_question_table extends flexible_table
+class quiz_exaqueststatistics_question_table extends flexible_table
 {
     /** @var object full question object for this question. */
     protected $questiondata;
@@ -85,39 +85,39 @@ class quiz_exaquest_statistics_question_table extends flexible_table
 
         if ($responseanalysis->has_subparts()) {
             $columns[] = 'part';
-            $headers[] = get_string('partofquestion', 'quiz_exaquest_statistics');
+            $headers[] = get_string('partofquestion', 'quiz_exaqueststatistics');
         }
 
         if ($responseanalysis->has_multiple_response_classes()) {
             $columns[] = 'responseclass';
-            $headers[] = get_string('modelresponse', 'quiz_exaquest_statistics');
+            $headers[] = get_string('modelresponse', 'quiz_exaqueststatistics');
 
             if ($responseanalysis->has_actual_responses()) {
                 $columns[] = 'response';
-                $headers[] = get_string('actualresponse', 'quiz_exaquest_statistics');
+                $headers[] = get_string('actualresponse', 'quiz_exaqueststatistics');
             }
 
         } else {
             $columns[] = 'response';
-            $headers[] = get_string('response', 'quiz_exaquest_statistics');
+            $headers[] = get_string('response', 'quiz_exaqueststatistics');
         }
 
         $columns[] = 'fraction';
-        $headers[] = get_string('optiongrade', 'quiz_exaquest_statistics');
+        $headers[] = get_string('optiongrade', 'quiz_exaqueststatistics');
 
         if (!$responseanalysis->has_multiple_tries_data()) {
             $columns[] = 'totalcount';
-            $headers[] = get_string('count', 'quiz_exaquest_statistics');
+            $headers[] = get_string('count', 'quiz_exaqueststatistics');
         } else {
             $countcolumns = range(1, $responseanalysis->get_maximum_tries());
             foreach ($countcolumns as $countcolumn) {
                 $columns[] = 'trycount' . $countcolumn;
-                $headers[] = get_string('counttryno', 'quiz_exaquest_statistics', $countcolumn);
+                $headers[] = get_string('counttryno', 'quiz_exaqueststatistics', $countcolumn);
             }
         }
 
         $columns[] = 'frequency';
-        $headers[] = get_string('frequency', 'quiz_exaquest_statistics');
+        $headers[] = get_string('frequency', 'quiz_exaqueststatistics');
 
         $this->define_columns($columns);
         $this->define_headers($headers);

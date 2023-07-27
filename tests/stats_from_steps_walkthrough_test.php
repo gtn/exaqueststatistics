@@ -14,13 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace exaquest_statistics\tests;
+namespace exaqueststatistics\tests;
 
-use exaquest_statistics\classes\calculator;
+use exaqueststatistics\classes\calculator;
 use question_attempt;
 use question_bank;
 use question_finder;
-use exaquest_statistics\quiz_statistics_report;
+use exaqueststatistics\quiz_exaqueststatistics_report;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -41,7 +41,7 @@ require_once($CFG->dirroot . '/mod/quiz/report/reportlib.php');
  * The calculations in the spreadsheets are the same as for the other question stats but applied just to the attempts where the
  * variants appeared.
  *
- * @package    quiz_exaquest_statistics
+ * @package    quiz_exaqueststatistics
  * @category   test
  * @copyright  2013 The Open University
  * @author     Jamie Pratt <me@jamiep.org>
@@ -50,7 +50,7 @@ require_once($CFG->dirroot . '/mod/quiz/report/reportlib.php');
 class stats_from_steps_walkthrough_test extends \mod_quiz\attempt_walkthrough_from_csv_test {
 
     /**
-     * @var quiz_statistics_report object to do stats calculations.
+     * @var quiz_exaqueststatistics_report object to do stats calculations.
      */
     protected $report;
 
@@ -359,7 +359,7 @@ class stats_from_steps_walkthrough_test extends \mod_quiz\attempt_walkthrough_fr
      */
     protected function check_stats_calculations_and_response_analysis($csvdata, $whichattempts, $whichtries,
             \core\dml\sql_join $groupstudentsjoins) {
-        $this->report = new quiz_statistics_report();
+        $this->report = new quiz_exaqueststatistics_report();
         $questions = $this->report->load_and_initialise_questions_for_calculations($this->quiz);
         list($quizstats, $questionstats) = $this->report->get_all_stats_and_analysis($this->quiz,
                                                                                      $whichattempts,
@@ -367,7 +367,7 @@ class stats_from_steps_walkthrough_test extends \mod_quiz\attempt_walkthrough_fr
                                                                                      $groupstudentsjoins,
                                                                                      $questions);
 
-        $qubaids = quiz_exaquest_statistics_qubaids_condition($this->quiz->id, $groupstudentsjoins, $whichattempts);
+        $qubaids = quiz_exaqueststatistics_qubaids_condition($this->quiz->id, $groupstudentsjoins, $whichattempts);
 
         // We will create some quiz and question stat calculator instances and some response analyser instances, just in order
         // to check the last analysed time then returned.
