@@ -23,9 +23,9 @@ use exaqueststatistics\quiz_exaqueststatistics_report;
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/mod/quiz/locallib.php');
-require_once($CFG->dirroot . '/mod/quiz/report/statistics/statisticslib.php');
+require_once($CFG->dirroot . '/mod/quiz/report/exaqueststatistics/statisticslib.php');
 require_once($CFG->dirroot . '/mod/quiz/report/reportlib.php');
-require_once($CFG->dirroot . '/mod/quiz/report/statistics/report.php');
+require_once($CFG->dirroot . '/mod/quiz/report/exaqueststatistics/report.php');
 
 /**
  * Re-calculate question statistics.
