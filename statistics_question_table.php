@@ -23,6 +23,10 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+namespace exaquest_statistics;
+use flexible_table;
+use moodle_url;
+
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->libdir . '/tablelib.php');
@@ -39,7 +43,8 @@ require_once($CFG->libdir . '/tablelib.php');
  * @author    James Pratt <me@jamiep.org>
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_exaquest_statistics_question_table extends flexible_table {
+class quiz_exaquest_statistics_question_table extends flexible_table
+{
     /** @var object full question object for this question. */
     protected $questiondata;
 
@@ -52,7 +57,8 @@ class quiz_exaquest_statistics_question_table extends flexible_table {
      * @param int $qid the id of the particular question whose statistics are being
      * displayed.
      */
-    public function __construct($qid) {
+    public function __construct($qid)
+    {
         parent::__construct('mod-quiz-report-statistics-question-table' . $qid);
     }
 
@@ -60,11 +66,12 @@ class quiz_exaquest_statistics_question_table extends flexible_table {
      * Set up columns and column names and other table settings.
      *
      * @param moodle_url $reporturl
-     * @param object     $questiondata
-     * @param integer    $s             number of attempts on this question.
+     * @param object $questiondata
+     * @param integer $s number of attempts on this question.
      * @param \core_question\statistics\responses\analysis_for_question $responseanalysis
      */
-    public function question_setup($reporturl, $questiondata, $s, $responseanalysis) {
+    public function question_setup($reporturl, $questiondata, $s, $responseanalysis)
+    {
         $this->questiondata = $questiondata;
         $this->s = $s;
 
@@ -104,7 +111,7 @@ class quiz_exaquest_statistics_question_table extends flexible_table {
         } else {
             $countcolumns = range(1, $responseanalysis->get_maximum_tries());
             foreach ($countcolumns as $countcolumn) {
-                $columns[] = 'trycount'.$countcolumn;
+                $columns[] = 'trycount' . $countcolumn;
                 $headers[] = get_string('counttryno', 'quiz_exaquest_statistics', $countcolumn);
             }
         }
@@ -132,7 +139,8 @@ class quiz_exaquest_statistics_question_table extends flexible_table {
      * @param float $fraction The fraction.
      * @return string The fraction as a percentage.
      */
-    protected function format_percentage($fraction) {
+    protected function format_percentage($fraction)
+    {
         return format_float($fraction * 100, 2) . '%';
     }
 
@@ -141,7 +149,8 @@ class quiz_exaquest_statistics_question_table extends flexible_table {
      * @param object $response containst the data to display.
      * @return string contents of this table cell.
      */
-    protected function col_fraction($response) {
+    protected function col_fraction($response)
+    {
         if (is_null($response->fraction)) {
             return '';
         }
@@ -154,7 +163,8 @@ class quiz_exaquest_statistics_question_table extends flexible_table {
      * @param object $response contains the data to display.
      * @return string contents of this table cell.
      */
-    protected function col_frequency($response) {
+    protected function col_frequency($response)
+    {
         if (!$this->s) {
             return '';
         }
@@ -166,11 +176,12 @@ class quiz_exaquest_statistics_question_table extends flexible_table {
      * that means just output the property as in the table raw data. If this returns none null
      * then this is the output for this cell of the table.
      *
-     * @param string $colname  The name of this column.
+     * @param string $colname The name of this column.
      * @param object $response The raw data for this row.
      * @return string|null The value for this cell of the table or null means use raw data.
      */
-    public function other_cols($colname, $response) {
+    public function other_cols($colname, $response)
+    {
         if (preg_match('/^trycount(\d+)$/', $colname, $matches)) {
             if (isset($response->trycount[$matches[1]])) {
                 return $response->trycount[$matches[1]];

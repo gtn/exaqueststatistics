@@ -23,7 +23,9 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace quiz_exaquest_statistics;
+namespace exaquest_statistics\tests;
+
+use quiz_exaquest_statistics\qubaid_condition;
 
 defined('MOODLE_INTERNAL') || die();
 

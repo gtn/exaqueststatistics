@@ -22,11 +22,16 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+namespace exaquest_statistics;
 defined('MOODLE_INTERNAL') || die();
 
-require_once($CFG->libdir.'/tablelib.php');
+require_once($CFG->libdir . '/tablelib.php');
 
 use \core_question\statistics\questions\calculated_question_summary;
+use flexible_table;
+use html_writer;
+use moodle_url;
+use question_bank;
 
 /**
  * This table has one row for each question in the quiz, with sub-rows when
@@ -37,7 +42,8 @@ use \core_question\statistics\questions\calculated_question_summary;
  * @copyright 2008 Jamie Pratt
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_exaquest_statistics_table extends flexible_table {
+class quiz_exaquest_statistics_table extends flexible_table
+{
     /** @var object the quiz settings. */
     protected $quiz;
 
@@ -47,7 +53,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
     /**
      * Constructor.
      */
-    public function __construct() {
+    public function __construct()
+    {
         parent::__construct('mod-quiz-report-statistics-report');
     }
 
@@ -60,7 +67,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param moodle_url $reporturl the URL to redisplay this report.
      * @param int $s number of attempts included in the statistics.
      */
-    public function statistics_setup($quiz, $cmid, $reporturl, $s) {
+    public function statistics_setup($quiz, $cmid, $reporturl, $s)
+    {
         $this->quiz = $quiz;
         $this->cmid = $cmid;
 
@@ -137,18 +145,20 @@ class quiz_exaquest_statistics_table extends flexible_table {
     /**
      * Open a div tag to wrap statistics table.
      */
-    public function  wrap_html_start() {
+    public function wrap_html_start()
+    {
         // Horrible Moodle 2.0 wide-content work-around.
         if (!$this->is_downloading()) {
             echo html_writer::start_tag('div', array('id' => 'tablecontainer',
-                    'class' => 'statistics-tablecontainer'));
+                'class' => 'statistics-tablecontainer'));
         }
     }
 
     /**
      * Close a statistics table div.
      */
-    public function wrap_html_finish() {
+    public function wrap_html_finish()
+    {
         if (!$this->is_downloading()) {
             echo html_writer::end_tag('div');
         }
@@ -159,7 +169,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_number($questionstat) {
+    protected function col_number($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             return '';
         }
@@ -169,11 +180,11 @@ class quiz_exaquest_statistics_table extends flexible_table {
         $number = $questionstat->question->number;
 
         if (isset($questionstat->subqdisplayorder)) {
-            $number = $number . '.'.$questionstat->subqdisplayorder;
+            $number = $number . '.' . $questionstat->subqdisplayorder;
         }
 
         if ($questionstat->question->qtype != 'random' && !is_null($questionstat->variant)) {
-            $number = $number . '.'.$questionstat->variant;
+            $number = $number . '.' . $questionstat->variant;
         }
 
         return $number;
@@ -184,7 +195,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_icon($questionstat) {
+    protected function col_icon($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             return '';
         } else {
@@ -198,7 +210,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_actions($questionstat) {
+    protected function col_actions($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             return '';
         } else if ($questionstat->question->qtype === 'missingtype') {
@@ -209,7 +222,7 @@ class quiz_exaquest_statistics_table extends flexible_table {
                 $random = true;
             }
             return quiz_question_action_icons($this->quiz, $this->cmid,
-                    $questionstat->question, $this->baseurl, $questionstat->variant, $random);
+                $questionstat->question, $this->baseurl, $questionstat->variant, $random);
         }
     }
 
@@ -219,7 +232,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_qtype($questionstat) {
+    protected function col_qtype($questionstat)
+    {
         return question_bank::get_qtype_name($questionstat->question->qtype);
     }
 
@@ -229,7 +243,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_name($questionstat) {
+    protected function col_name($questionstat)
+    {
         $name = $questionstat->question->name;
 
         if (!is_null($questionstat->variant)) {
@@ -249,14 +264,14 @@ class quiz_exaquest_statistics_table extends flexible_table {
                 // Variant of a sub-question.
                 $url = new moodle_url($baseurl, array('qid' => $questionstat->questionid, 'variant' => $questionstat->variant));
                 $name = html_writer::link($url, $name, array('title' => get_string('detailedanalysisforvariant',
-                                                                                   'quiz_exaquest_statistics',
-                                                                                   $questionstat->variant)));
+                    'quiz_exaquest_statistics',
+                    $questionstat->variant)));
             } else if ($questionstat->slot) {
                 // Variant of a question in a slot.
                 $url = new moodle_url($baseurl, array('slot' => $questionstat->slot, 'variant' => $questionstat->variant));
                 $name = html_writer::link($url, $name, array('title' => get_string('detailedanalysisforvariant',
-                                                                                   'quiz_exaquest_statistics',
-                                                                                   $questionstat->variant)));
+                    'quiz_exaquest_statistics',
+                    $questionstat->variant)));
             }
         } else {
             if ($questionstat->subquestion && !$questionstat->get_variants()) {
@@ -279,8 +294,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
                 } else if (!$israndomquestion && !$questionstat->get_variants() && !$questionstat->get_sub_question_ids()) {
                     // Question cannot be broken down into sub-questions or variants. Link will show response analysis page.
                     $name = html_writer::link($url,
-                                              $name,
-                                              array('title' => get_string('detailedanalysis', 'quiz_exaquest_statistics')));
+                        $name,
+                        array('title' => get_string('detailedanalysis', 'quiz_exaquest_statistics')));
                 }
             }
         }
@@ -305,7 +320,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_s($questionstat) {
+    protected function col_s($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             list($min, $max) = $questionstat->get_min_max_of('s');
             $min = $min ?: 0;
@@ -323,7 +339,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_facility($questionstat) {
+    protected function col_facility($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             list($min, $max) = $questionstat->get_min_max_of('facility');
             return $this->format_percentage_range($min, $max);
@@ -339,7 +356,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_sd($questionstat) {
+    protected function col_sd($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             list($min, $max) = $questionstat->get_min_max_of('sd');
             return $this->format_percentage_range($min, $max);
@@ -355,7 +373,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_random_guess_score($questionstat) {
+    protected function col_random_guess_score($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             list($min, $max) = $questionstat->get_min_max_of('randomguessscore');
             return $this->format_percentage_range($min, $max);
@@ -373,7 +392,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_intended_weight($questionstat) {
+    protected function col_intended_weight($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             list($min, $max) = $questionstat->get_min_max_of('maxmark');
 
@@ -395,7 +415,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_effective_weight($questionstat) {
+    protected function col_effective_weight($questionstat)
+    {
         global $OUTPUT;
 
         if ($this->is_calculated_question_summary($questionstat)) {
@@ -404,7 +425,7 @@ class quiz_exaquest_statistics_table extends flexible_table {
             if (is_null($min) && is_null($max)) {
                 return '';
             } else {
-                list( , $negcovar) = $questionstat->get_min_max_of('negcovar');
+                list(, $negcovar) = $questionstat->get_min_max_of('negcovar');
                 if ($negcovar) {
                     $min = get_string('negcovar', 'quiz_exaquest_statistics');
                 }
@@ -418,8 +439,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
 
             if (!$this->is_downloading()) {
                 $negcovar = html_writer::tag('div',
-                        $negcovar . $OUTPUT->help_icon('negcovar', 'quiz_exaquest_statistics'),
-                        array('class' => 'negcovar'));
+                    $negcovar . $OUTPUT->help_icon('negcovar', 'quiz_exaquest_statistics'),
+                    array('class' => 'negcovar'));
             }
 
             return $negcovar;
@@ -435,7 +456,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_discrimination_index($questionstat) {
+    protected function col_discrimination_index($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             list($min, $max) = $questionstat->get_min_max_of('discriminationindex');
 
@@ -464,7 +486,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return string contents of this table cell.
      */
-    protected function col_discriminative_efficiency($questionstat) {
+    protected function col_discriminative_efficiency($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             list($min, $max) = $questionstat->get_min_max_of('discriminativeefficiency');
 
@@ -485,7 +508,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param \core_question\statistics\questions\calculated $questionstat stats for the question.
      * @return bool is this question possibly not pulling it's weight?
      */
-    protected function is_dubious_question($questionstat) {
+    protected function is_dubious_question($questionstat)
+    {
         if ($this->is_calculated_question_summary($questionstat)) {
             // We only care about the minimum value here.
             // If the minimum value is less than the threshold, then we know that there is at least one value below the threshold.
@@ -504,10 +528,11 @@ class quiz_exaquest_statistics_table extends flexible_table {
     /**
      * Check if the given stats object is an instance of calculated_question_summary.
      *
-     * @param  \core_question\statistics\questions\calculated $questionstat Stats object
+     * @param \core_question\statistics\questions\calculated $questionstat Stats object
      * @return bool
      */
-    protected function is_calculated_question_summary($questionstat) {
+    protected function is_calculated_question_summary($questionstat)
+    {
         return $questionstat instanceof calculated_question_summary;
     }
 
@@ -520,7 +545,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param string|null $max The maximum value in the range
      * @return string
      */
-    protected function format_range(string $min = null, string $max = null) {
+    protected function format_range(string $min = null, string $max = null)
+    {
         if (is_null($min) && is_null($max)) {
             return '';
         } else {
@@ -540,7 +566,8 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param int $decimals Sets the number of decimal points
      * @return string
      */
-    protected function format_percentage(float $number, bool $fraction = true, int $decimals = 2) {
+    protected function format_percentage(float $number, bool $fraction = true, int $decimals = 2)
+    {
         $coefficient = $fraction ? 100 : 1;
         return get_string('percents', 'moodle', format_float($number * $coefficient, $decimals));
     }
@@ -556,15 +583,16 @@ class quiz_exaquest_statistics_table extends flexible_table {
      * @param int $decimals Sets the number of decimal points
      * @return string A formatted string that represents a range between $min to $max.
      */
-    protected function format_percentage_range(float $min = null, float $max = null, bool $fraction = true, int $decimals = 2) {
+    protected function format_percentage_range(float $min = null, float $max = null, bool $fraction = true, int $decimals = 2)
+    {
         if (is_null($min) && is_null($max)) {
             return '';
         } else {
             $min = $min ?: 0;
             $max = $max ?: 0;
             return $this->format_range(
-                    $this->format_percentage($min, $fraction, $decimals),
-                    $this->format_percentage($max, $fraction, $decimals)
+                $this->format_percentage($min, $fraction, $decimals),
+                $this->format_percentage($max, $fraction, $decimals)
             );
         }
     }

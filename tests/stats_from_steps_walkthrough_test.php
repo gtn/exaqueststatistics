@@ -14,12 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace quiz_exaquest_statistics;
+namespace exaquest_statistics\tests;
 
+use exaquest_statistics\classes\calculator;
 use question_attempt;
 use question_bank;
 use question_finder;
-use quiz_statistics_report;
+use exaquest_statistics\quiz_statistics_report;
 
 defined('MOODLE_INTERNAL') || die();
 

@@ -14,9 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-namespace quiz_exaquest_statistics;
+namespace exaquest_statistics\tests;
 
-use quiz_exaquest_statistics_table;
+use exaquest_statistics\quiz_exaquest_statistics_table;
 
 defined('MOODLE_INTERNAL') || die();
 
@@ -37,7 +37,7 @@ class statistics_table_test extends \advanced_testcase {
         $table = new quiz_exaquest_statistics_table();
 
         // The format_percentage method is protected. Use Reflection to call the method.
-        $reflector = new \ReflectionClass('quiz_exaquest_statistics_table');
+        $reflector = new \ReflectionClass('exaquest_statistics\quiz_exaquest_statistics_table');
         $method = $reflector->getMethod('format_percentage');
         $method->setAccessible(true);
 
@@ -56,7 +56,7 @@ class statistics_table_test extends \advanced_testcase {
         $table = new quiz_exaquest_statistics_table();
 
         // The format_percentage_range method is protected. Use Reflection to call the method.
-        $reflector = new \ReflectionClass('quiz_exaquest_statistics_table');
+        $reflector = new \ReflectionClass('exaquest_statistics\quiz_exaquest_statistics_table');
         $method = $reflector->getMethod('format_percentage_range');
         $method->setAccessible(true);
 
@@ -75,7 +75,7 @@ class statistics_table_test extends \advanced_testcase {
         $table = new quiz_exaquest_statistics_table();
 
         // The format_range method is protected. Use Reflection to call the method.
-        $reflector = new \ReflectionClass('quiz_exaquest_statistics_table');
+        $reflector = new \ReflectionClass('exaquest_statistics\quiz_exaquest_statistics_table');
         $method = $reflector->getMethod('format_range');
         $method->setAccessible(true);
 
