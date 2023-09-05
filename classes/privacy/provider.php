@@ -15,32 +15,75 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Privacy Subsystem implementation for quiz_exaqueststatistics.
+ * Privacy subsystem implementation for quiz_exaqueststatistics.
  *
- * @package    quiz_exaqueststatistics
- * @copyright  2018 Andrew Nicols <andrew@nicols.co.uk>
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @package   quiz_exaqueststatistics
+ * @copyright 2020 The Open University
+ * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace exaqueststatistics\classes\privacy;
+namespace quiz_exaqueststatistics\privacy;
+
+use core_privacy\local\metadata\collection;
+use core_privacy\local\request\writer;
 
 defined('MOODLE_INTERNAL') || die();
 
 /**
- * Privacy Subsystem for quiz_exaqueststatistics implementing null_provider.
- *
- * @copyright  2018 Andrew Nicols <andrew@nicols.co.uk>
- * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * Privacy subsystem for quiz_exaqueststatistics.
  */
-class provider implements \core_privacy\local\metadata\null_provider {
+class provider implements
+        \core_privacy\local\metadata\provider,
+        \core_privacy\local\request\user_preference_provider {
 
     /**
-     * Get the language string identifier with the component's language
-     * file to explain why this plugin stores no data.
+     * Returns meta data about this system.
      *
-     * @return  string
+     * @param   collection     $collection The initialised collection to add items to.
+     * @return  collection     A listing of user data stored through this system.
      */
-    public static function get_reason() : string {
-        return 'privacy:metadata';
+    public static function get_metadata(collection $collection) : collection {
+        $collection->add_user_preference('quiz_exaqueststatistics_pagesize', 'privacy:preference:pagesize');
+        $collection->add_user_preference('quiz_exaqueststatistics_order', 'privacy:preference:order');
+
+        return $collection;
+    }
+
+    /**
+     * Export all user preferences for the plugin.
+     *
+     * @param   int         $userid The userid of the user whose data is to be exported.
+     */
+    public static function export_user_preferences(int $userid) {
+
+        // Page size.
+        $pagesize = get_user_preferences("quiz_exaqueststatistics_pagesize", null, $userid);
+        if ($pagesize !== null) {
+            writer::export_user_preference('quiz_exaqueststatistics', 'pagesize', $pagesize,
+                    get_string('privacy:preference:pagesize', 'quiz_exaqueststatistics'));
+        }
+
+        // Attempt order.
+        $order = get_user_preferences("quiz_exaqueststatistics_order", null, $userid);
+        if ($order !== null) {
+            switch ($order) {
+                case 'random':
+                    $order = get_string('random', 'quiz_exaqueststatistics');
+                    break;
+                case 'date':
+                    $order = get_string('date');
+                    break;
+                case 'studentfirstname':
+                    $order = get_string('studentfirstname', 'quiz_exaqueststatistics');
+                    break;
+                case 'studentlastname':
+                    $order = get_string('studentlastname', 'quiz_exaqueststatistics');
+                    break;
+                default:
+                    $order = \core_user\fields::get_display_name($order);
+            }
+            writer::export_user_preference('quiz_exaqueststatistics', 'order', $order,
+                    get_string('privacy:preference:order', 'quiz_exaqueststatistics'));
+        }
     }
 }

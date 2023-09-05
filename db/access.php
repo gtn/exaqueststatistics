@@ -15,24 +15,15 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Capability definitions for the quiz statistics report.
+ * Capability definitions for the quiz manual grading report.
  *
  * @package   quiz_exaqueststatistics
- * @copyright 2008 Jamie Pratt
+ * @copyright 2010 The Open University
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
-$capabilities = array(
-    'quiz/exaqueststatistics:view' => array(
-        'captype' => 'read',
-        'contextlevel' => CONTEXT_MODULE,
-        'archetypes' => array(
-            'teacher' => CAP_ALLOW,
-            'editingteacher' => CAP_ALLOW,
-            'manager' => CAP_ALLOW
-        ),
-        'clonepermissionsfrom' =>  'mod/quiz:viewreports'
-    )
-);
+$capabilities = [
+
+];

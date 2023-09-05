@@ -14,280 +14,536 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
-/**
- * Quiz statistics report class.
- *
- * @package   quiz_exaqueststatistics
- * @copyright 2014 Open University
- * @author    James Pratt <me@jamiep.org>
- * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- */
+use mod_quiz\local\reports\report_base;
+use mod_quiz\quiz_attempt;
 
-namespace exaqueststatistics;
 defined('MOODLE_INTERNAL') || die();
 
-use context_module;
-use core_question\statistics\questions\all_calculated_for_qubaid_condition;
-use exaqueststatistics\quiz_exaqueststatistics_question_table;
-use exaqueststatistics\quiz_exaqueststatistics_settings_form;
-use exaqueststatistics\quiz_exaqueststatistics_table;
-use html_table;
-use html_writer;
-use moodle_url;
-use qubaid_condition;
-use question_attempt;
-use question_bank;
-use quiz_default_report;
-
-require_once($CFG->dirroot . '/mod/quiz/report/default.php');
-require_once($CFG->dirroot . '/mod/quiz/report/reportlib.php');
-require_once($CFG->dirroot . '/mod/quiz/report/exaqueststatistics/statistics_form.php');
-require_once($CFG->dirroot . '/mod/quiz/report/exaqueststatistics/statistics_table.php');
-require_once($CFG->dirroot . '/mod/quiz/report/exaqueststatistics/statistics_question_table.php');
-require_once($CFG->dirroot . '/mod/quiz/report/exaqueststatistics/statisticslib.php');
+require_once($CFG->dirroot . '/mod/quiz/report/grading/gradingsettings_form.php');
 
 /**
- * The quiz statistics report provides summary information about each question in
- * a quiz, compared to the whole quiz. It also provides a drill-down to more
- * detailed information about each question.
+ * Quiz report to help teachers manually grade questions that need it.
  *
- * @copyright 2008 Jamie Pratt
+ * This report basically provides two screens:
+ * - List question that might need manual grading (or optionally all questions).
+ * - Provide an efficient UI to grade all attempts at a particular question.
+ *
+ * @copyright 2006 Gustav Delius
  * @license   http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quiz_exaqueststatistics_report extends quiz_default_report
-{
+class quiz_exaqueststatistics_report extends report_base {
+    const DEFAULT_PAGE_SIZE = 5;
+    const DEFAULT_ORDER = 'random';
 
-    /** @var context_module context of this quiz. */
+    /** @var string Positive integer regular expression. */
+    const REGEX_POSITIVE_INT = '/^[1-9]\d*$/';
+
+    /** @var array URL parameters for what is being displayed when grading. */
+    protected $viewoptions = [];
+
+    /** @var int the current group, 0 if none, or NO_GROUPS_ALLOWED. */
+    protected $currentgroup;
+
+    /** @var array from quiz_report_get_significant_questions. */
+    protected $questions;
+
+    /** @var stdClass the course settings. */
+    protected $course;
+
+    /** @var stdClass the course_module settings. */
+    protected $cm;
+
+    /** @var stdClass the quiz settings. */
+    protected $quiz;
+
+    /** @var context the quiz context. */
     protected $context;
 
-    /** @var quiz_exaqueststatistics_table instance of table class used for main questions stats table. */
-    protected $table;
+    /** @var quiz_exaqueststatistics_renderer Renderer of Quiz Grading. */
+    protected $renderer;
 
-    /** @var \core\progress\base|null $progress Handles progress reporting or not. */
-    protected $progress = null;
+    /** @var string fragment of SQL code to restrict to the relevant users. */
+    protected $userssql;
 
-    /**
-     * Display the report.
-     */
-    public function display($quiz, $cm, $course)
-    {
-        global $OUTPUT, $DB;
+    /** @var array extra user fields. */
+    protected $extrauserfields = [];
 
-        raise_memory_limit(MEMORY_HUGE);
+    public function display($quiz, $cm, $course) {
 
-        $this->context = context_module::instance($cm->id);
+        $this->quiz = $quiz;
+        $this->cm = $cm;
+        $this->course = $course;
 
-        if (!quiz_has_questions($quiz->id)) {
-            $this->print_header_and_tabs($cm, $course, $quiz, 'statistics');
-            echo quiz_no_questions_message($quiz, $cm, $this->context);
+        // Get the URL options.
+        $slot = optional_param('slot', null, PARAM_INT);
+        $questionid = optional_param('qid', null, PARAM_INT);
+        $grade = optional_param('grade', null, PARAM_ALPHA);
+
+        $includeauto = optional_param('includeauto', false, PARAM_BOOL);
+        if (!in_array($grade, ['all', 'needsgrading', 'autograded', 'manuallygraded'])) {
+            $grade = null;
+        }
+        $pagesize = optional_param('pagesize',
+                get_user_preferences('quiz_exaqueststatistics_pagesize', self::DEFAULT_PAGE_SIZE),
+                PARAM_INT);
+        $page = optional_param('page', 0, PARAM_INT);
+        $order = optional_param('order',
+                get_user_preferences('quiz_exaqueststatistics_order', self::DEFAULT_ORDER),
+                PARAM_ALPHAEXT);
+
+        // Assemble the options required to reload this page.
+        $optparams = ['includeauto', 'page'];
+        foreach ($optparams as $param) {
+            if ($$param) {
+                $this->viewoptions[$param] = $$param;
+            }
+        }
+        if (!data_submitted() && !preg_match(self::REGEX_POSITIVE_INT, $pagesize)) {
+            // We only validate if the user accesses the page via a cleaned-up GET URL here.
+            throw new moodle_exception('invalidpagesize');
+        }
+        if ($pagesize != self::DEFAULT_PAGE_SIZE) {
+            $this->viewoptions['pagesize'] = $pagesize;
+        }
+        if ($order != self::DEFAULT_ORDER) {
+            $this->viewoptions['order'] = $order;
+        }
+
+        // Check permissions.
+        $this->context = context_module::instance($this->cm->id);
+        require_capability('mod/quiz:grade', $this->context);
+        $shownames = has_capability('quiz/grading:viewstudentnames', $this->context);
+        // Whether the current user can see custom user fields.
+        $showcustomfields = has_capability('quiz/grading:viewidnumber', $this->context);
+        $userfieldsapi = \core_user\fields::for_identity($this->context)->with_name();
+        $customfields = [];
+        foreach ($userfieldsapi->get_required_fields([\core_user\fields::PURPOSE_IDENTITY]) as $field) {
+            $customfields[] = $field;
+        }
+        // Validate order.
+        $orderoptions = array_merge(['random', 'date', 'studentfirstname', 'studentlastname'], $customfields);
+        if (!in_array($order, $orderoptions)) {
+            $order = self::DEFAULT_ORDER;
+        } else if (!$shownames && ($order == 'studentfirstname' || $order == 'studentlastname')) {
+            $order = self::DEFAULT_ORDER;
+        } else if (!$showcustomfields && in_array($order, $customfields)) {
+            $order = self::DEFAULT_ORDER;
+        }
+        if ($order == 'random') {
+            $page = 0;
+        }
+
+        // Get the list of questions in this quiz.
+        $this->questions = quiz_report_get_significant_questions($quiz);
+        if ($slot && !array_key_exists($slot, $this->questions)) {
+            throw new moodle_exception('unknownquestion', 'quiz_exaqueststatistics');
+        }
+
+        // Process any submitted data.
+        if ($data = data_submitted() && confirm_sesskey() && $this->validate_submitted_marks()) {
+            // Changes done to handle attempts being missed from grading due to redirecting to new page.
+            $attemptsgraded = $this->process_submitted_data();
+
+            $nextpagenumber = $page + 1;
+            // If attempts need grading and one or more have now been graded, then page number should remain the same.
+            if ($grade == 'needsgrading' && $attemptsgraded) {
+                $nextpagenumber = $page;
+            }
+
+            redirect($this->grade_question_url($slot, $questionid, $grade, $nextpagenumber));
+        }
+
+        // Get the group, and the list of significant users.
+        $this->currentgroup = $this->get_current_group($cm, $course, $this->context);
+        if ($this->currentgroup == self::NO_GROUPS_ALLOWED) {
+            $this->userssql = [];
+        } else {
+            $this->userssql = get_enrolled_sql($this->context,
+                    ['mod/quiz:reviewmyattempts', 'mod/quiz:attempt'], $this->currentgroup);
+        }
+
+        $hasquestions = quiz_has_questions($this->quiz->id);
+        if (!$hasquestions) {
+            $this->print_header_and_tabs($cm, $course, $quiz, 'grading');
+            echo $this->renderer->render_quiz_no_question_notification($quiz, $cm, $this->context);
             return true;
         }
 
-        // Work out the display options.
-        $download = optional_param('download', '', PARAM_ALPHA);
-        $everything = optional_param('everything', 0, PARAM_BOOL);
-        $recalculate = optional_param('recalculate', 0, PARAM_BOOL);
-        // A qid paramter indicates we should display the detailed analysis of a sub question.
-        $qid = optional_param('qid', 0, PARAM_INT);
-        $slot = optional_param('slot', 0, PARAM_INT);
-        $variantno = optional_param('variant', null, PARAM_INT);
-        $whichattempts = optional_param('whichattempts', $quiz->grademethod, PARAM_INT);
-        $whichtries = optional_param('whichtries', question_attempt::LAST_TRY, PARAM_ALPHA);
-
-        $pageoptions = array();
-        $pageoptions['id'] = $cm->id;
-        $pageoptions['mode'] = 'exaqueststatistics';
-
-        $reporturl = new moodle_url('/mod/quiz/report.php', $pageoptions);
-
-        $mform = new quiz_exaqueststatistics_settings_form($reporturl, compact('quiz'));
-
-        $mform->set_data(array('whichattempts' => $whichattempts, 'whichtries' => $whichtries));
-
-        if ($whichattempts != $quiz->grademethod) {
-            $reporturl->param('whichattempts', $whichattempts);
+        if (!$slot) {
+            $this->display_index($includeauto);
+            return true;
         }
 
-        if ($whichtries != question_attempt::LAST_TRY) {
-            $reporturl->param('whichtries', $whichtries);
-        }
+        // Display the grading UI for one question.
 
-        // Find out current groups mode.
-        $currentgroup = $this->get_current_group($cm, $course, $this->context);
-        $nostudentsingroup = false; // True if a group is selected and there is no one in it.
-        if (empty($currentgroup)) {
-            $currentgroup = 0;
-            $groupstudentsjoins = new \core\dml\sql_join();
-
-        } else if ($currentgroup == self::NO_GROUPS_ALLOWED) {
-            $groupstudentsjoins = new \core\dml\sql_join();
-            $nostudentsingroup = true;
-
-        } else {
-            // All users who can attempt quizzes and who are in the currently selected group.
-            $groupstudentsjoins = get_enrolled_with_capabilities_join($this->context, '',
-                array('mod/quiz:reviewmyattempts', 'mod/quiz:attempt'), $currentgroup);
-            if (!empty($groupstudentsjoins->joins)) {
-                $sql = "SELECT DISTINCT u.id
-                    FROM {user} u
-                    {$groupstudentsjoins->joins}
-                    WHERE {$groupstudentsjoins->wheres}";
-                if (!$DB->record_exists_sql($sql, $groupstudentsjoins->params)) {
-                    $nostudentsingroup = true;
-                }
+        // Make sure there is something to do.
+        $counts = null;
+        $statecounts = $this->get_question_state_summary([$slot]);
+        foreach ($statecounts as $record) {
+            if ($record->questionid == $questionid) {
+                $counts = $record;
+                break;
             }
         }
 
-        $qubaids = quiz_exaqueststatistics_qubaids_condition($quiz->id, $groupstudentsjoins, $whichattempts);
-
-        // If recalculate was requested, handle that.
-        if ($recalculate && confirm_sesskey()) {
-            $this->clear_cached_data($qubaids);
-            redirect($reporturl);
+        // If not, redirect back to the list.
+        if (!$counts || $counts->$grade == 0) {
+            redirect($this->list_questions_url(), get_string('alldoneredirecting', 'quiz_exaqueststatistics'));
         }
 
-        // Set up the main table.
-        $this->table = new quiz_exaqueststatistics_table();
-        if ($everything) {
-            $report = get_string('completestatsfilename', 'quiz_exaqueststatistics');
-        } else {
-            $report = get_string('questionstatsfilename', 'quiz_exaqueststatistics');
-        }
-        $courseshortname = format_string($course->shortname, true,
-            array('context' => context_course::instance($course->id)));
-        $filename = quiz_report_download_filename($report, $courseshortname, $quiz->name);
-        $this->table->is_downloading($download, $filename,
-            get_string('quizstructureanalysis', 'quiz_exaqueststatistics'));
-        $questions = $this->load_and_initialise_questions_for_calculations($quiz);
+        $this->display_grading_interface($slot, $questionid, $grade,
+                $pagesize, $page, $shownames, $showcustomfields, $order, $counts);
+        return true;
+    }
 
-        // Print the page header stuff (if not downloading.
-        if (!$this->table->is_downloading()) {
-            $this->print_header_and_tabs($cm, $course, $quiz, 'statistics');
-        }
+    /**
+     * Get the JOIN conditions needed so we only show attempts by relevant users.
+     *
+     * @return qubaid_join
+     */
+    protected function get_qubaids_condition() {
 
-        if (!$nostudentsingroup) {
-            // Get the data to be displayed.
-            $progress = $this->get_progress_trace_instance();
-            list($quizstats, $questionstats) =
-                $this->get_all_stats_and_analysis($quiz, $whichattempts, $whichtries, $groupstudentsjoins, $questions, $progress);
-        } else {
-            // Or create empty stats containers.
-            $quizstats = new \exaqueststatistics\classes\calculated($whichattempts);
-            $questionstats = new \core_question\statistics\questions\all_calculated_for_qubaid_condition();
-        }
+        $where = "quiza.quiz = :mangrquizid AND
+                quiza.preview = 0 AND
+                quiza.state = :statefinished";
+        $params = ['mangrquizid' => $this->cm->instance, 'statefinished' => quiz_attempt::FINISHED];
 
-        // Set up the table.
-        $this->table->statistics_setup($quiz, $cm->id, $reporturl, $quizstats->s());
-
-        // Print the rest of the page header stuff (if not downloading.
-        if (!$this->table->is_downloading()) {
-
-            if (groups_get_activity_groupmode($cm)) {
-                groups_print_activity_menu($cm, $reporturl->out());
-                if ($currentgroup && $nostudentsingroup) {
-                    $OUTPUT->notification(get_string('nostudentsingroup', 'quiz_exaqueststatistics'));
-                }
-            }
-
-            if (!$this->table->is_downloading() && $quizstats->s() == 0) {
-                echo $OUTPUT->notification(get_string('nogradedattempts', 'quiz_exaqueststatistics'));
-            }
-
-            foreach ($questionstats->any_error_messages() as $errormessage) {
-                echo $OUTPUT->notification($errormessage);
-            }
-
-            // Print display options form.
-            $mform->display();
-        }
-
-        if ($everything) { // Implies is downloading.
-            // Overall report, then the analysis of each question.
-            $quizinfo = $quizstats->get_formatted_quiz_info_data($course, $cm, $quiz);
-            $this->download_quiz_info_table($quizinfo);
-
-            if ($quizstats->s()) {
-                $this->output_quiz_structure_analysis_table($questionstats);
-
-                if ($this->table->is_downloading() == 'html' && $quizstats->s() != 0) {
-                    $this->output_statistics_graph($quiz->id, $qubaids);
-                }
-
-                $this->output_all_question_response_analysis($qubaids, $questions, $questionstats, $reporturl, $whichtries);
-            }
-
-            $this->table->export_class_instance()->finish_document();
-
-        } else if ($qid) {
-            // Report on an individual sub-question indexed questionid.
-            if (!$questionstats->has_subq($qid, $variantno)) {
-                throw new \moodle_exception('questiondoesnotexist', 'question');
-            }
-
-            $this->output_individual_question_data($quiz, $questionstats->for_subq($qid, $variantno));
-            $this->output_individual_question_response_analysis($questionstats->for_subq($qid, $variantno)->question,
-                $variantno,
-                $questionstats->for_subq($qid, $variantno)->s,
-                $reporturl,
-                $qubaids,
-                $whichtries);
-            // Back to overview link.
-            echo $OUTPUT->box('<a href="' . $reporturl->out() . '">' .
-                get_string('backtoquizreport', 'quiz_exaqueststatistics') . '</a>',
-                'boxaligncenter generalbox boxwidthnormal mdl-align');
-        } else if ($slot) {
-            // Report on an individual question indexed by position.
-            if (!isset($questions[$slot])) {
-                throw new \moodle_exception('questiondoesnotexist', 'question');
-            }
-
-            if ($variantno === null &&
-                ($questionstats->for_slot($slot)->get_sub_question_ids()
-                    || $questionstats->for_slot($slot)->get_variants())) {
-                if (!$this->table->is_downloading()) {
-                    $number = $questionstats->for_slot($slot)->question->number;
-                    echo $OUTPUT->heading(get_string('slotstructureanalysis', 'quiz_exaqueststatistics', $number), 3);
-                }
-                $this->table->define_baseurl(new moodle_url($reporturl, array('slot' => $slot)));
-                $this->table->format_and_add_array_of_rows($questionstats->structure_analysis_for_one_slot($slot));
+        $usersjoin = '';
+        $currentgroup = groups_get_activity_group($this->cm, true);
+        $enrolleduserscount = count_enrolled_users($this->context,
+                ['mod/quiz:reviewmyattempts', 'mod/quiz:attempt'], $currentgroup);
+        if ($currentgroup) {
+            $userssql = get_enrolled_sql($this->context,
+                    ['mod/quiz:reviewmyattempts', 'mod/quiz:attempt'], $currentgroup);
+            if ($enrolleduserscount < 1) {
+                $where .= ' AND quiza.userid = 0';
             } else {
-                $this->output_individual_question_data($quiz, $questionstats->for_slot($slot, $variantno));
-                $this->output_individual_question_response_analysis($questions[$slot],
-                    $variantno,
-                    $questionstats->for_slot($slot, $variantno)->s,
-                    $reporturl,
-                    $qubaids,
-                    $whichtries);
+                $usersjoin = "JOIN ({$userssql[0]}) AS enr ON quiza.userid = enr.id";
+                $params += $userssql[1];
             }
-            if (!$this->table->is_downloading()) {
-                // Back to overview link.
-                echo $OUTPUT->box('<a href="' . $reporturl->out() . '">' .
-                    get_string('backtoquizreport', 'quiz_exaqueststatistics') . '</a>',
-                    'backtomainstats boxaligncenter generalbox boxwidthnormal mdl-align');
-            } else {
-                $this->table->finish_output();
-            }
+        }
 
-        } else if ($this->table->is_downloading()) {
-            // Downloading overview report.
-            $quizinfo = $quizstats->get_formatted_quiz_info_data($course, $cm, $quiz);
-            $this->download_quiz_info_table($quizinfo);
-            if ($quizstats->s()) {
-                $this->output_quiz_structure_analysis_table($questionstats);
-            }
-            $this->table->export_class_instance()->finish_document();
+        return new qubaid_join("{quiz_attempts} quiza $usersjoin ", 'quiza.uniqueid', $where, $params);
+    }
 
+    /**
+     * Load the quiz_attempts rows corresponding to a list of question_usage ids.
+     *
+     * @param int[] $qubaids the question_usage ids of the quiz_attempts to load.
+     * @return array quiz attempts, with added user name fields.
+     */
+    protected function load_attempts_by_usage_ids($qubaids) {
+        global $DB;
+
+        list($asql, $params) = $DB->get_in_or_equal($qubaids);
+        $params[] = quiz_attempt::FINISHED;
+        $params[] = $this->quiz->id;
+
+        $fields = 'quiza.*, ';
+        $userfieldsapi = \core_user\fields::for_identity($this->context)->with_name();
+        $userfieldssql = $userfieldsapi->get_sql('u', false, '', 'userid', false);
+        $fields .= $userfieldssql->selects;
+        foreach ($userfieldsapi->get_required_fields([\core_user\fields::PURPOSE_IDENTITY]) as $userfield) {
+            $this->extrauserfields[] = s($userfield);
+        }
+        $params = array_merge($userfieldssql->params, $params);
+        $attemptsbyid = $DB->get_records_sql("
+                SELECT $fields
+                FROM {quiz_attempts} quiza
+                JOIN {user} u ON u.id = quiza.userid
+                {$userfieldssql->joins}
+                WHERE quiza.uniqueid $asql AND quiza.state = ? AND quiza.quiz = ?",
+                $params);
+
+        $attempts = [];
+        foreach ($attemptsbyid as $attempt) {
+            $attempts[$attempt->uniqueid] = $attempt;
+        }
+        return $attempts;
+    }
+
+    /**
+     * Get the URL of the front page of the report that lists all the questions.
+     *
+     * @return moodle_url the URL.
+     */
+    protected function base_url() {
+        return new moodle_url('/mod/quiz/report.php',
+                ['id' => $this->cm->id, 'mode' => 'grading']);
+    }
+
+    /**
+     * Get the URL of the front page of the report that lists all the questions.
+     *
+     * @param bool $includeauto if not given, use the current setting, otherwise,
+     *      force a particular value of includeauto in the URL.
+     * @return moodle_url the URL.
+     */
+    protected function list_questions_url($includeauto = null) {
+        $url = $this->base_url();
+
+        $url->params($this->viewoptions);
+
+        if (!is_null($includeauto)) {
+            $url->param('includeauto', $includeauto);
+        }
+
+        return $url;
+    }
+
+    /**
+     * Get the URL to grade a batch of question attempts.
+     *
+     * @param int $slot
+     * @param int $questionid
+     * @param string $grade
+     * @param int|bool $page = true, link to current page. false = omit page.
+     *      number = link to specific page.
+     * @return moodle_url
+     */
+    protected function grade_question_url($slot, $questionid, $grade, $page = true) {
+        $url = $this->base_url();
+        $url->params(['slot' => $slot, 'qid' => $questionid, 'grade' => $grade]);
+        $url->params($this->viewoptions);
+
+        if (!$page) {
+            $url->remove_params('page');
+        } else if (is_integer($page)) {
+            $url->param('page', $page);
+        }
+
+        return $url;
+    }
+
+    /**
+     * Renders the contents of one cell of the table on the index view.
+     *
+     * @param stdClass $counts counts of different types of attempt for this slot.
+     * @param string $type the type of count to format.
+     * @param string $gradestring get_string identifier for the grading link text, if required.
+     * @return string HTML.
+     */
+    protected function format_count_for_table($counts, $type, $gradestring) {
+        $result = $counts->$type;
+        if ($counts->$type > 0) {
+            $gradeurl = $this->grade_question_url($counts->slot, $counts->questionid, $type);
+            $result .= $this->renderer->render_grade_link($counts, $type, $gradestring, $gradeurl);
+        }
+        return $result;
+    }
+
+    /**
+     * Display the report front page which summarises the number of attempts to grade.
+     *
+     * @param bool $includeauto whether to show automatically-graded questions.
+     */
+    protected function display_index($includeauto) {
+        global $PAGE, $OUTPUT;
+
+        $this->print_header_and_tabs($this->cm, $this->course, $this->quiz, 'grading');
+
+        if ($groupmode = groups_get_activity_groupmode($this->cm)) {
+            // Groups is being used.
+            groups_print_activity_menu($this->cm, $this->list_questions_url());
+        }
+        // Get the current group for the user looking at the report.
+        $currentgroup = $this->get_current_group($this->cm, $this->course, $this->context);
+        if ($currentgroup == self::NO_GROUPS_ALLOWED) {
+            echo $OUTPUT->notification(get_string('notingroup'));
+            return;
+        }
+        $statecounts = $this->get_question_state_summary(array_keys($this->questions));
+        if ($includeauto) {
+            $linktext = get_string('hideautomaticallygraded', 'quiz_exaqueststatistics');
         } else {
-            // On-screen display of overview report.
-            echo $OUTPUT->heading(get_string('quizinformation', 'quiz_exaqueststatistics'), 3);
-            echo $this->output_caching_info($quizstats->timemodified, $quiz->id, $groupstudentsjoins, $whichattempts, $reporturl);
-            echo $this->everything_download_options($reporturl);
-            $quizinfo = $quizstats->get_formatted_quiz_info_data($course, $cm, $quiz);
-            echo $this->output_quiz_info_table($quizinfo);
-            if ($quizstats->s()) {
-                echo $OUTPUT->heading(get_string('quizstructureanalysis', 'quiz_exaqueststatistics'), 3);
-                $this->output_quiz_structure_analysis_table($questionstats);
-                $this->output_statistics_graph($quiz, $qubaids);
+            $linktext = get_string('alsoshowautomaticallygraded', 'quiz_exaqueststatistics');
+        }
+        echo $this->renderer->render_display_index_heading($linktext, $this->list_questions_url(!$includeauto));
+        $data = [];
+        $header = [];
+
+        $header[] = get_string('qno', 'quiz_exaqueststatistics');
+        $header[] = get_string('qtypeveryshort', 'question');
+        $header[] = get_string('questionname', 'quiz_exaqueststatistics');
+        $header[] = get_string('tograde', 'quiz_exaqueststatistics');
+        $header[] = get_string('alreadygraded', 'quiz_exaqueststatistics');
+        if ($includeauto) {
+            $header[] = get_string('automaticallygraded', 'quiz_exaqueststatistics');
+        }
+        $header[] = get_string('total', 'quiz_exaqueststatistics');
+
+        foreach ($statecounts as $counts) {
+            if ($counts->all == 0) {
+                continue;
+            }
+            if (!$includeauto && $counts->needsgrading == 0 && $counts->manuallygraded == 0) {
+                continue;
+            }
+
+            $row = [];
+
+            $row[] = $this->questions[$counts->slot]->number;
+
+            $row[] = $PAGE->get_renderer('question', 'bank')->qtype_icon($this->questions[$counts->slot]->qtype);
+
+            $row[] = format_string($counts->name);
+
+            $row[] = $this->format_count_for_table($counts, 'needsgrading', 'grade');
+
+            $row[] = $this->format_count_for_table($counts, 'manuallygraded', 'updategrade');
+
+            if ($includeauto) {
+                $row[] = $this->format_count_for_table($counts, 'autograded', 'updategrade');
+            }
+
+            $row[] = $this->format_count_for_table($counts, 'all', 'gradeall');
+
+            $data[] = $row;
+        }
+        echo $this->renderer->render_questions_table($includeauto, $data, $header);
+    }
+
+    /**
+     * Display the UI for grading attempts at one question.
+     *
+     * @param int $slot identifies which question to grade.
+     * @param int $questionid identifies which question to grade.
+     * @param string $grade type of attempts to grade.
+     * @param int $pagesize number of questions to show per page.
+     * @param int $page current page number.
+     * @param bool $shownames whether student names should be shown.
+     * @param bool $showcustomfields whether custom field values should be shown.
+     * @param string $order preferred order of attempts.
+     * @param stdClass $counts object that stores the number of each type of attempt.
+     */
+    protected function display_grading_interface($slot, $questionid, $grade,
+            $pagesize, $page, $shownames, $showcustomfields, $order, $counts) {
+
+        if ($pagesize * $page >= $counts->$grade) {
+            $page = 0;
+        }
+
+        // Prepare the options form.
+        $hidden = [
+            'id' => $this->cm->id,
+            'mode' => 'grading',
+            'slot' => $slot,
+            'qid' => $questionid,
+            'page' => $page,
+        ];
+        if (array_key_exists('includeauto', $this->viewoptions)) {
+            $hidden['includeauto'] = $this->viewoptions['includeauto'];
+        }
+        $mform = new quiz_exaqueststatistics_settings_form($hidden, $counts, $shownames, $showcustomfields, $this->context);
+
+        // Tell the form the current settings.
+        $settings = new stdClass();
+        $settings->grade = $grade;
+        $settings->pagesize = $pagesize;
+        $settings->order = $order;
+        $mform->set_data($settings);
+
+        if ($mform->is_submitted()) {
+            if ($mform->is_validated()) {
+                // If the form was submitted and validated, save the user preferences, and
+                // redirect to a cleaned-up GET URL.
+                set_user_preference('quiz_exaqueststatistics_pagesize', $pagesize);
+                set_user_preference('quiz_exaqueststatistics_order', $order);
+                redirect($this->grade_question_url($slot, $questionid, $grade, $page));
+            } else {
+                // Set the pagesize back to the previous value, so the report page can continue the render
+                // and the form can show the validation.
+                $pagesize = get_user_preferences('quiz_exaqueststatistics_pagesize', self::DEFAULT_PAGE_SIZE);
+            }
+        }
+
+        list($qubaids, $count) = $this->get_usage_ids_where_question_in_state(
+                $grade, $slot, $questionid, $order, $page, $pagesize);
+        $attempts = $this->load_attempts_by_usage_ids($qubaids);
+
+        // Question info.
+        $questioninfo = new stdClass();
+        $questioninfo->number = $this->questions[$slot]->number;
+        $questioninfo->questionname = format_string($counts->name);
+
+        // Paging info.
+        $paginginfo = new stdClass();
+        $paginginfo->from = $page * $pagesize + 1;
+        $paginginfo->to = min(($page + 1) * $pagesize, $count);
+        $paginginfo->of = $count;
+        $qubaidlist = implode(',', $qubaids);
+
+        $this->print_header_and_tabs($this->cm, $this->course, $this->quiz, 'grading');
+
+        $gradequestioncontent = '';
+        foreach ($qubaids as $qubaid) {
+            $attempt = $attempts[$qubaid];
+            $quba = question_engine::load_questions_usage_by_activity($qubaid);
+            $displayoptions = quiz_get_review_options($this->quiz, $attempt, $this->context);
+            $displayoptions->generalfeedback = question_display_options::HIDDEN;
+            $displayoptions->history = question_display_options::HIDDEN;
+            $displayoptions->manualcomment = question_display_options::EDITABLE;
+
+            $gradequestioncontent .= $this->renderer->render_grade_question(
+                    $quba,
+                    $slot,
+                    $displayoptions,
+                    $this->questions[$slot]->number,
+                    $this->get_question_heading($attempt, $shownames, $showcustomfields)
+            );
+        }
+
+        $pagingbar = new stdClass();
+        $pagingbar->count = $count;
+        $pagingbar->page = $page;
+        $pagingbar->pagesize = $pagesize;
+        $pagingbar->pagesize = $pagesize;
+        $pagingbar->order = $order;
+        $pagingbar->pagingurl = $this->grade_question_url($slot, $questionid, $grade, false);
+
+        $hiddeninputs = [
+                'qubaids' => $qubaidlist,
+                'slots' => $slot,
+                'sesskey' => sesskey()
+        ];
+
+        echo $this->renderer->render_grading_interface(
+                $questioninfo,
+                $this->list_questions_url(),
+                $mform,
+                $paginginfo,
+                $pagingbar,
+                $this->grade_question_url($slot, $questionid, $grade, $page),
+                $hiddeninputs,
+                $gradequestioncontent
+        );
+    }
+
+    /**
+     * When saving a grading page, are all the submitted marks valid?
+     *
+     * @return bool true if all valid, else false.
+     */
+    protected function validate_submitted_marks() {
+
+        $qubaids = optional_param('qubaids', null, PARAM_SEQUENCE);
+        if (!$qubaids) {
+            return false;
+        }
+        $qubaids = clean_param_array(explode(',', $qubaids), PARAM_INT);
+
+        $slots = optional_param('slots', '', PARAM_SEQUENCE);
+        if (!$slots) {
+            $slots = [];
+        } else {
+            $slots = explode(',', $slots);
+        }
+
+        foreach ($qubaids as $qubaid) {
+            foreach ($slots as $slot) {
+                if (!question_engine::is_manual_grade_in_range($qubaid, $slot)) {
+                    return false;
+                }
             }
         }
 
@@ -295,679 +551,192 @@ class quiz_exaqueststatistics_report extends quiz_default_report
     }
 
     /**
-     * Display the statistical and introductory information about a question.
-     * Only called when not downloading.
+     * Save all submitted marks to the database.
      *
-     * @param object $quiz the quiz settings.
-     * @param \core_question\statistics\questions\calculated $questionstat the question to report on.
+     * @return bool returns true if some attempts or all are graded. False, if none of the attempts are graded.
      */
-    protected function output_individual_question_data($quiz, $questionstat)
-    {
-        global $OUTPUT;
+    protected function process_submitted_data(): bool {
+        global $DB;
 
-        // On-screen display. Show a summary of the question's place in the quiz,
-        // and the question statistics.
-        $datumfromtable = $this->table->format_row($questionstat);
+        $qubaids = optional_param('qubaids', null, PARAM_SEQUENCE);
+        $assumedslotforevents = optional_param('slot', null, PARAM_INT);
 
-        // Set up the question info table.
-        $questioninfotable = new html_table();
-        $questioninfotable->align = array('center', 'center');
-        $questioninfotable->width = '60%';
-        $questioninfotable->attributes['class'] = 'generaltable titlesleft';
-
-        $questioninfotable->data = array();
-        $questioninfotable->data[] = array(get_string('modulename', 'quiz'), $quiz->name);
-        $questioninfotable->data[] = array(get_string('questionname', 'quiz_exaqueststatistics'),
-            $questionstat->question->name . '&nbsp;' . $datumfromtable['actions']);
-
-        if ($questionstat->variant !== null) {
-            $questioninfotable->data[] = array(get_string('variant', 'quiz_exaqueststatistics'), $questionstat->variant);
-
-        }
-        $questioninfotable->data[] = array(get_string('questiontype', 'quiz_exaqueststatistics'),
-            $datumfromtable['icon'] . '&nbsp;' .
-            question_bank::get_qtype($questionstat->question->qtype, false)->menu_name() . '&nbsp;' .
-            $datumfromtable['icon']);
-        $questioninfotable->data[] = array(get_string('positions', 'quiz_exaqueststatistics'),
-            $questionstat->positions);
-
-        // Set up the question statistics table.
-        $questionstatstable = new html_table();
-        $questionstatstable->align = array('center', 'center');
-        $questionstatstable->width = '60%';
-        $questionstatstable->attributes['class'] = 'generaltable titlesleft';
-
-        unset($datumfromtable['number']);
-        unset($datumfromtable['icon']);
-        $actions = $datumfromtable['actions'];
-        unset($datumfromtable['actions']);
-        unset($datumfromtable['name']);
-        $labels = array(
-            's' => get_string('attempts', 'quiz_exaqueststatistics'),
-            'facility' => get_string('facility', 'quiz_exaqueststatistics'),
-            'sd' => get_string('standarddeviationq', 'quiz_exaqueststatistics'),
-            'random_guess_score' => get_string('random_guess_score', 'quiz_exaqueststatistics'),
-            'intended_weight' => get_string('intended_weight', 'quiz_exaqueststatistics'),
-            'effective_weight' => get_string('effective_weight', 'quiz_exaqueststatistics'),
-            'discrimination_index' => get_string('discrimination_index', 'quiz_exaqueststatistics'),
-            'discriminative_efficiency' =>
-                get_string('discriminative_efficiency', 'quiz_exaqueststatistics')
-        );
-        foreach ($datumfromtable as $item => $value) {
-            $questionstatstable->data[] = array($labels[$item], $value);
+        if (!$qubaids) {
+            return false;
         }
 
-        // Display the various bits.
-        echo $OUTPUT->heading(get_string('questioninformation', 'quiz_exaqueststatistics'), 3);
-        echo html_writer::table($questioninfotable);
-        echo $this->render_question_text($questionstat->question);
-        echo $OUTPUT->heading(get_string('questionstatistics', 'quiz_exaqueststatistics'), 3);
-        echo html_writer::table($questionstatstable);
+        $qubaids = clean_param_array(explode(',', $qubaids), PARAM_INT);
+        $attempts = $this->load_attempts_by_usage_ids($qubaids);
+        $events = [];
+
+        $transaction = $DB->start_delegated_transaction();
+        $attemptsgraded = false;
+        foreach ($qubaids as $qubaid) {
+            $attempt = $attempts[$qubaid];
+            $attemptobj = new quiz_attempt($attempt, $this->quiz, $this->cm, $this->course);
+
+            // State of the attempt before grades are changed.
+            $attemptoldtstate = $attemptobj->get_question_state($assumedslotforevents);
+
+            $attemptobj->process_submitted_actions(time());
+
+            // Get attempt state after grades are changed.
+            $attemptnewtstate = $attemptobj->get_question_state($assumedslotforevents);
+
+            // Check if any attempts are graded.
+            if (!$attemptsgraded && $attemptoldtstate->is_graded() != $attemptnewtstate->is_graded()) {
+                $attemptsgraded = true;
+            }
+
+            // Add the event we will trigger later.
+            $params = [
+                'objectid' => $attemptobj->get_question_attempt($assumedslotforevents)->get_question_id(),
+                'courseid' => $attemptobj->get_courseid(),
+                'context' => context_module::instance($attemptobj->get_cmid()),
+                'other' => [
+                    'quizid' => $attemptobj->get_quizid(),
+                    'attemptid' => $attemptobj->get_attemptid(),
+                    'slot' => $assumedslotforevents,
+                ],
+            ];
+            $events[] = \mod_quiz\event\question_manually_graded::create($params);
+        }
+        $transaction->allow_commit();
+
+        // Trigger events for all the questions we manually marked.
+        foreach ($events as $event) {
+            $event->trigger();
+        }
+
+        return $attemptsgraded;
     }
 
     /**
-     * Output question text in a box with urls appropriate for a preview of the question.
+     * Load information about the number of attempts at various questions in each
+     * summarystate.
      *
-     * @param object $question question data.
-     * @return string HTML of question text, ready for display.
+     * The results are returned as an two dimensional array $qubaid => $slot => $dataobject
+     *
+     * @param array $slots A list of slots for the questions you want to konw about.
+     * @return array The array keys are slot,qestionid. The values are objects with
+     * fields $slot, $questionid, $inprogress, $name, $needsgrading, $autograded,
+     * $manuallygraded and $all.
      */
-    protected function render_question_text($question)
-    {
-        global $OUTPUT;
-
-        $text = question_rewrite_question_preview_urls($question->questiontext, $question->id,
-            $question->contextid, 'question', 'questiontext', $question->id,
-            $this->context->id, 'quiz_exaqueststatistics');
-
-        return $OUTPUT->box(format_text($text, $question->questiontextformat,
-            array('noclean' => true, 'para' => false, 'overflowdiv' => true)),
-            'questiontext boxaligncenter generalbox boxwidthnormal mdl-align');
+    protected function get_question_state_summary($slots) {
+        $dm = new question_engine_data_mapper();
+        return $dm->load_questions_usages_question_state_summary(
+                $this->get_qubaids_condition(), $slots);
     }
 
     /**
-     * Display the response analysis for a question.
+     * Get a list of usage ids where the question with slot $slot, and optionally
+     * also with question id $questionid, is in summary state $summarystate. Also
+     * return the total count of such states.
      *
-     * @param object $question the question to report on.
-     * @param int|null $variantno the variant
-     * @param int $s
-     * @param moodle_url $reporturl the URL to redisplay this report.
-     * @param qubaid_condition $qubaids
-     * @param string $whichtries
+     * Only a subset of the ids can be returned by using $orderby, $limitfrom and
+     * $limitnum. A special value 'random' can be passed as $orderby, in which case
+     * $limitfrom is ignored.
+     *
+     * @param int $slot The slot for the questions you want to konw about.
+     * @param int $questionid (optional) Only return attempts that were of this specific question.
+     * @param string $summarystate 'all', 'needsgrading', 'autograded' or 'manuallygraded'.
+     * @param string $orderby 'random', 'date', 'student' or 'idnumber'.
+     * @param int $page implements paging of the results.
+     *      Ignored if $orderby = random or $pagesize is null.
+     * @param int $pagesize implements paging of the results. null = all.
+     * @return array with two elements, an array of usage ids, and a count of the total number.
      */
-    protected function output_individual_question_response_analysis($question, $variantno, $s, $reporturl, $qubaids,
-                                                                    $whichtries = question_attempt::LAST_TRY)
-    {
-        global $OUTPUT;
-
-        if (!question_bank::get_qtype($question->qtype, false)->can_analyse_responses()) {
-            return;
-        }
-
-        $qtable = new quiz_exaqueststatistics_question_table($question->id);
-        $exportclass = $this->table->export_class_instance();
-        $qtable->export_class_instance($exportclass);
-        if (!$this->table->is_downloading()) {
-            // Output an appropriate title.
-            echo $OUTPUT->heading(get_string('analysisofresponses', 'quiz_exaqueststatistics'), 3);
-
+    protected function get_usage_ids_where_question_in_state($summarystate, $slot,
+            $questionid = null, $orderby = 'random', $page = 0, $pagesize = null) {
+        $dm = new question_engine_data_mapper();
+        $extraselect = '';
+        if ($pagesize && $orderby != 'random') {
+            $limitfrom = $page * $pagesize;
         } else {
-            // Work out an appropriate title.
-            $a = clone($question);
-            $a->variant = $variantno;
-
-            if (!empty($question->number) && !is_null($variantno)) {
-                $questiontabletitle = get_string('analysisnovariant', 'quiz_exaqueststatistics', $a);
-            } else if (!empty($question->number)) {
-                $questiontabletitle = get_string('analysisno', 'quiz_exaqueststatistics', $a);
-            } else if (!is_null($variantno)) {
-                $questiontabletitle = get_string('analysisvariant', 'quiz_exaqueststatistics', $a);
-            } else {
-                $questiontabletitle = get_string('analysisnameonly', 'quiz_exaqueststatistics', $a);
-            }
-
-            if ($this->table->is_downloading() == 'html') {
-                $questiontabletitle = get_string('analysisofresponsesfor', 'quiz_exaqueststatistics', $questiontabletitle);
-            }
-
-            // Set up the table.
-            $exportclass->start_table($questiontabletitle);
-
-            if ($this->table->is_downloading() == 'html') {
-                echo $this->render_question_text($question);
-            }
+            $limitfrom = 0;
         }
 
-        $responesanalyser = new \core_question\statistics\responses\analyser($question, $whichtries);
-        $responseanalysis = $responesanalyser->load_cached($qubaids, $whichtries);
+        $qubaids = $this->get_qubaids_condition();
 
-        $qtable->question_setup($reporturl, $question, $s, $responseanalysis);
-        if ($this->table->is_downloading()) {
-            $exportclass->output_headers($qtable->headers);
+        $params = [];
+        $userfieldsapi = \core_user\fields::for_identity($this->context)->with_name();
+        $userfieldssql = $userfieldsapi->get_sql('u', true, '', 'userid', true);
+        $params = array_merge($params, $userfieldssql->params);
+        $customfields = [];
+        foreach ($userfieldsapi->get_required_fields([\core_user\fields::PURPOSE_IDENTITY]) as $field) {
+            $customfields[] = $field;
         }
-
-        // Where no variant no is specified the variant no is actually one.
-        if ($variantno === null) {
-            $variantno = 1;
-        }
-        foreach ($responseanalysis->get_subpart_ids($variantno) as $partid) {
-            $subpart = $responseanalysis->get_analysis_for_subpart($variantno, $partid);
-            foreach ($subpart->get_response_class_ids() as $responseclassid) {
-                $responseclass = $subpart->get_response_class($responseclassid);
-                $tabledata = $responseclass->data_for_question_response_table($subpart->has_multiple_response_classes(), $partid);
-                foreach ($tabledata as $row) {
-                    $qtable->add_data_keyed($qtable->format_row($row));
-                }
+        if ($orderby === 'date') {
+            list($statetest, $params) = $dm->in_summary_state_test(
+                    'manuallygraded', false, 'mangrstate');
+            $extraselect = "(
+                    SELECT MAX(sortqas.timecreated)
+                    FROM {question_attempt_steps} sortqas
+                    WHERE sortqas.questionattemptid = qa.id
+                        AND sortqas.state $statetest
+                    ) as tcreated";
+            $orderby = "tcreated";
+        } else if ($orderby === 'studentfirstname' || $orderby === 'studentlastname' || in_array($orderby, $customfields)) {
+            $qubaids->from .= " JOIN {user} u ON quiza.userid = u.id {$userfieldssql->joins}";
+            // For name sorting, map orderby form value to
+            // actual column names; 'idnumber' maps naturally.
+            if ($orderby === "studentlastname") {
+                $orderby = "u.lastname, u.firstname";
+            } else if ($orderby === "studentfirstname") {
+                $orderby = "u.firstname, u.lastname";
+            } else if (in_array($orderby, $customfields)) { // Sort order by current custom user field.
+                $orderby = $userfieldssql->mappings[$orderby];
             }
         }
 
-        $qtable->finish_output(!$this->table->is_downloading());
+        return $dm->load_questions_usages_where_question_in_state($qubaids, $summarystate,
+                $slot, $questionid, $orderby, $params, $limitfrom, $pagesize, $extraselect);
     }
 
     /**
-     * Output the table that lists all the questions in the quiz with their statistics.
+     * Initialise some parts of $PAGE and start output.
      *
-     * @param \core_question\statistics\questions\all_calculated_for_qubaid_condition $questionstats the stats for all questions in
-     *                                                                                               the quiz including subqs and
-     *                                                                                               variants.
+     * @param stdClass $cm the course_module information.
+     * @param stdClass $course the course settings.
+     * @param stdClass $quiz the quiz settings.
+     * @param string $reportmode the report name.
      */
-    protected function output_quiz_structure_analysis_table($questionstats)
-    {
-        $limitvariants = !$this->table->is_downloading();
-        foreach ($questionstats->get_all_slots() as $slot) {
-            // Output the data for these question statistics.
-            $structureanalysis = $questionstats->structure_analysis_for_one_slot($slot, $limitvariants);
-            if (is_null($structureanalysis)) {
-                $this->table->add_separator();
-            } else {
-                foreach ($structureanalysis as $row) {
-                    $bgcssclass = '';
-                    // The only way to identify in this point of the report if a row is a summary row
-                    // is checking if it's a instance of calculated_question_summary class.
-                    if ($row instanceof \core_question\statistics\questions\calculated_question_summary) {
-                        // Apply a custom css class to summary row to remove border and reduce paddings.
-                        $bgcssclass = 'quiz_exaqueststatistics-summaryrow';
+    public function print_header_and_tabs($cm, $course, $quiz, $reportmode = 'overview') {
+        global $PAGE;
+        $this->renderer = $PAGE->get_renderer('quiz_exaqueststatistics');
+        parent::print_header_and_tabs($cm, $course, $quiz, $reportmode);
+    }
 
-                        // For question that contain a summary row, we add a "hidden" row in between so the report
-                        // display both rows with same background color.
-                        $this->table->add_data_keyed([], 'd-none hidden');
-                    }
-
-                    $this->table->add_data_keyed($this->table->format_row($row), $bgcssclass);
-                }
+    /**
+     * Get question heading.
+     *
+     * @param stdClass $attempt An instance of quiz_attempt.
+     * @param bool $shownames True to show the student first/lastnames.
+     * @param bool $showcustomfields Whether custom field values should be shown.
+     * @return string The string text for the question heading.
+     */
+    protected function get_question_heading(stdClass $attempt, bool $shownames, bool $showcustomfields): string {
+        global $DB;
+        $a = new stdClass();
+        $a->attempt = $attempt->attempt;
+        $a->fullname = fullname($attempt);
+        $customfields = [];
+        foreach ($this->extrauserfields as $field) {
+            if ($attempt->{s($field)}) {
+                $customfields[] = $attempt->{s($field)};
             }
         }
+        $a->customfields = trim(implode(', ', (array)$customfields), ' ,');
 
-        $this->table->finish_output(!$this->table->is_downloading());
-    }
-
-    /**
-     * Return HTML for table of overall quiz statistics.
-     *
-     * @param array $quizinfo as returned by {@link get_formatted_quiz_info_data()}.
-     * @return string the HTML.
-     */
-    protected function output_quiz_info_table($quizinfo)
-    {
-
-        $quizinfotable = new html_table();
-        $quizinfotable->align = array('center', 'center');
-        $quizinfotable->width = '60%';
-        $quizinfotable->attributes['class'] = 'generaltable titlesleft';
-        $quizinfotable->data = array();
-
-        foreach ($quizinfo as $heading => $value) {
-            $quizinfotable->data[] = array($heading, $value);
-        }
-
-        return html_writer::table($quizinfotable);
-    }
-
-    /**
-     * Download the table of overall quiz statistics.
-     *
-     * @param array $quizinfo as returned by {@link get_formatted_quiz_info_data()}.
-     */
-    protected function download_quiz_info_table($quizinfo)
-    {
-        global $OUTPUT;
-
-        // HTML download is a special case.
-        if ($this->table->is_downloading() == 'html') {
-            echo $OUTPUT->heading(get_string('quizinformation', 'quiz_exaqueststatistics'), 3);
-            echo $this->output_quiz_info_table($quizinfo);
-            return;
-        }
-
-        // Reformat the data ready for output.
-        $headers = array();
-        $row = array();
-        foreach ($quizinfo as $heading => $value) {
-            $headers[] = $heading;
-            $row[] = $value;
-        }
-
-        // Do the output.
-        $exportclass = $this->table->export_class_instance();
-        $exportclass->start_table(get_string('quizinformation', 'quiz_exaqueststatistics'));
-        $exportclass->output_headers($headers);
-        $exportclass->add_data($row);
-        $exportclass->finish_table();
-    }
-
-    /**
-     * Output the HTML needed to show the statistics graph.
-     *
-     * @param int|object $quizorid The quiz, or its ID.
-     * @param qubaid_condition $qubaids the question usages whose responses to analyse.
-     * @param string $whichattempts Which attempts constant.
-     */
-    protected function output_statistics_graph($quizorid, $qubaids)
-    {
-        global $DB, $PAGE;
-
-        $quiz = $quizorid;
-        if (!is_object($quiz)) {
-            $quiz = $DB->get_record('quiz', array('id' => $quizorid), '*', MUST_EXIST);
-        }
-
-        // Load the rest of the required data.
-        $questions = quiz_report_get_significant_questions($quiz);
-
-        // Only load main question not sub questions.
-        $questionstatistics = $DB->get_records_select('question_statistics',
-            'hashcode = ? AND slot IS NOT NULL AND variant IS NULL',
-            [$qubaids->get_hash_code()]);
-
-        // Configure what to display.
-        $fieldstoplot = [
-            'facility' => get_string('facility', 'quiz_exaqueststatistics'),
-            'discriminativeefficiency' => get_string('discriminative_efficiency', 'quiz_exaqueststatistics')
-        ];
-        $fieldstoplotfactor = ['facility' => 100, 'discriminativeefficiency' => 1];
-
-        // Prepare the arrays to hold the data.
-        $xdata = [];
-        foreach (array_keys($fieldstoplot) as $fieldtoplot) {
-            $ydata[$fieldtoplot] = [];
-        }
-
-        // Fill in the data for each question.
-        foreach ($questionstatistics as $questionstatistic) {
-            $number = $questions[$questionstatistic->slot]->number;
-            $xdata[$number] = $number;
-
-            foreach ($fieldstoplot as $fieldtoplot => $notused) {
-                $value = $questionstatistic->$fieldtoplot;
-                if (is_null($value)) {
-                    $value = 0;
-                }
-                $value *= $fieldstoplotfactor[$fieldtoplot];
-                $ydata[$fieldtoplot][$number] = number_format($value, 2);
-            }
-        }
-
-        // Create the chart.
-        sort($xdata);
-        $chart = new \core\chart_bar();
-        $chart->get_xaxis(0, true)->set_label(get_string('position', 'quiz_exaqueststatistics'));
-        $chart->set_labels(array_values($xdata));
-
-        foreach ($fieldstoplot as $fieldtoplot => $notused) {
-            ksort($ydata[$fieldtoplot]);
-            $series = new \core\chart_series($fieldstoplot[$fieldtoplot], array_values($ydata[$fieldtoplot]));
-            $chart->add_series($series);
-        }
-
-        // Find max.
-        $max = 0;
-        foreach ($fieldstoplot as $fieldtoplot => $notused) {
-            $max = max($max, max($ydata[$fieldtoplot]));
-        }
-
-        // Set Y properties.
-        $yaxis = $chart->get_yaxis(0, true);
-        $yaxis->set_stepsize(10);
-        $yaxis->set_label('%');
-
-        $output = $PAGE->get_renderer('mod_quiz');
-        $graphname = get_string('statisticsreportgraph', 'quiz_exaqueststatistics');
-        echo $output->chart($chart, $graphname);
-    }
-
-    /**
-     * Get the quiz and question statistics, either by loading the cached results,
-     * or by recomputing them.
-     *
-     * @param object $quiz the quiz settings.
-     * @param string $whichattempts which attempts to use, represented internally as one of the constants as used in
-     *                                   $quiz->grademethod ie.
-     *                                   QUIZ_GRADEAVERAGE, QUIZ_GRADEHIGHEST, QUIZ_ATTEMPTLAST or QUIZ_ATTEMPTFIRST
-     *                                   we calculate stats based on which attempts would affect the grade for each student.
-     * @param string $whichtries which tries to analyse for response analysis. Will be one of
-     *                                   question_attempt::FIRST_TRY, LAST_TRY or ALL_TRIES.
-     * @param \core\dml\sql_join $groupstudentsjoins Contains joins, wheres, params for students in this group.
-     * @param array $questions full question data.
-     * @param \core\progress\base|null $progress
-     * @return array with 2 elements:    - $quizstats The statistics for overall attempt scores.
-     *                                   - $questionstats \core_question\statistics\questions\all_calculated_for_qubaid_condition
-     */
-    public function get_all_stats_and_analysis(
-        $quiz, $whichattempts, $whichtries, \core\dml\sql_join $groupstudentsjoins, $questions, $progress = null)
-    {
-
-        if ($progress === null) {
-            $progress = new \core\progress\none();
-        }
-
-        $qubaids = quiz_exaqueststatistics_qubaids_condition($quiz->id, $groupstudentsjoins, $whichattempts);
-
-        $qcalc = new \core_question\statistics\questions\calculator($questions, $progress);
-
-        $quizcalc = new \exaqueststatistics\classes\calculator($progress);
-
-        $progress->start_progress('', 3);
-        if ($quizcalc->get_last_calculated_time($qubaids) === false) {
-
-            // Recalculate now.
-            $questionstats = $qcalc->calculate($qubaids);
-            $progress->progress(1);
-
-            $quizstats = $quizcalc->calculate($quiz->id, $whichattempts, $groupstudentsjoins, count($questions),
-                $qcalc->get_sum_of_mark_variance());
-            $progress->progress(2);
+        if ($shownames && $showcustomfields) {
+            return get_string('gradingattemptwithcustomfields', 'quiz_exaqueststatistics', $a);
+        } else if ($shownames) {
+            return get_string('gradingattempt', 'quiz_exaqueststatistics', $a);
+        } else if ($showcustomfields) {
+            $a->fullname = $a->customfields;
+            return get_string('gradingattempt', 'quiz_exaqueststatistics', $a);
         } else {
-            $quizstats = $quizcalc->get_cached($qubaids);
-            $progress->progress(1);
-            $questionstats = $qcalc->get_cached($qubaids);
-            $progress->progress(2);
-        }
-
-        if ($quizstats->s()) {
-            $subquestions = $questionstats->get_sub_questions();
-            $this->analyse_responses_for_all_questions_and_subquestions($questions,
-                $subquestions,
-                $qubaids,
-                $whichtries,
-                $progress);
-        }
-        $progress->progress(3);
-        $progress->end_progress();
-
-        return array($quizstats, $questionstats);
-    }
-
-    /**
-     * Appropriate instance depending if we want html output for the user or not.
-     *
-     * @return \core\progress\base child of \core\progress\base to handle the display (or not) of task progress.
-     */
-    protected function get_progress_trace_instance()
-    {
-        if ($this->progress === null) {
-            if (!$this->table->is_downloading()) {
-                $this->progress = new \core\progress\display_if_slow(get_string('calculatingallstats', 'quiz_exaqueststatistics'));
-                $this->progress->set_display_names();
-            } else {
-                $this->progress = new \core\progress\none();
-            }
-        }
-        return $this->progress;
-    }
-
-    /**
-     * Analyse responses for all questions and sub questions in this quiz.
-     *
-     * @param object[] $questions as returned by self::load_and_initialise_questions_for_calculations
-     * @param object[] $subquestions full question objects.
-     * @param qubaid_condition $qubaids the question usages whose responses to analyse.
-     * @param string $whichtries which tries to analyse \question_attempt::FIRST_TRY, LAST_TRY or ALL_TRIES.
-     * @param null|\core\progress\base $progress Used to indicate progress of task.
-     */
-    protected function analyse_responses_for_all_questions_and_subquestions($questions, $subquestions, $qubaids,
-                                                                            $whichtries, $progress = null)
-    {
-        if ($progress === null) {
-            $progress = new \core\progress\none();
-        }
-
-        // Starting response analysis tasks.
-        $progress->start_progress('', count($questions) + count($subquestions));
-
-        $done = $this->analyse_responses_for_questions($questions, $qubaids, $whichtries, $progress);
-
-        $this->analyse_responses_for_questions($subquestions, $qubaids, $whichtries, $progress, $done);
-
-        // Finished all response analysis tasks.
-        $progress->end_progress();
-    }
-
-    /**
-     * Analyse responses for an array of questions or sub questions.
-     *
-     * @param object[] $questions as returned by self::load_and_initialise_questions_for_calculations.
-     * @param qubaid_condition $qubaids the question usages whose responses to analyse.
-     * @param string $whichtries which tries to analyse \question_attempt::FIRST_TRY, LAST_TRY or ALL_TRIES.
-     * @param null|\core\progress\base $progress Used to indicate progress of task.
-     * @param int[] $done array keys are ids of questions that have been analysed before calling method.
-     * @return array array keys are ids of questions that were analysed after this method call.
-     */
-    protected function analyse_responses_for_questions($questions, $qubaids, $whichtries, $progress = null, $done = array())
-    {
-        $countquestions = count($questions);
-        if (!$countquestions) {
-            return array();
-        }
-        if ($progress === null) {
-            $progress = new \core\progress\none();
-        }
-        $progress->start_progress('', $countquestions, $countquestions);
-        foreach ($questions as $question) {
-            $progress->increment_progress();
-            if (question_bank::get_qtype($question->qtype, false)->can_analyse_responses() && !isset($done[$question->id])) {
-                $responesstats = new \core_question\statistics\responses\analyser($question, $whichtries);
-                if ($responesstats->get_last_analysed_time($qubaids, $whichtries) === false) {
-                    $responesstats->calculate($qubaids, $whichtries);
-                }
-            }
-            $done[$question->id] = 1;
-        }
-        $progress->end_progress();
-        return $done;
-    }
-
-    /**
-     * Return a little form for the user to request to download the full report, including quiz stats and response analysis for
-     * all questions and sub-questions.
-     *
-     * @param moodle_url $reporturl the base URL of the report.
-     * @return string HTML.
-     */
-    protected function everything_download_options(moodle_url $reporturl)
-    {
-        global $OUTPUT;
-        return $OUTPUT->download_dataformat_selector(get_string('downloadeverything', 'quiz_exaqueststatistics'),
-            $reporturl->out_omit_querystring(), 'download', $reporturl->params() + array('everything' => 1));
-    }
-
-    /**
-     * Return HTML for a message that says when the stats were last calculated and a 'recalculate now' button.
-     *
-     * @param int $lastcachetime the time the stats were last cached.
-     * @param int $quizid the quiz id.
-     * @param array $groupstudentsjoins (joins, wheres, params) for students in the group or empty array if groups not used.
-     * @param string $whichattempts which attempts to use, represented internally as one of the constants as used in
-     *                                   $quiz->grademethod ie.
-     *                                   QUIZ_GRADEAVERAGE, QUIZ_GRADEHIGHEST, QUIZ_ATTEMPTLAST or QUIZ_ATTEMPTFIRST
-     *                                   we calculate stats based on which attempts would affect the grade for each student.
-     * @param moodle_url $reporturl url for this report
-     * @return string HTML.
-     */
-    protected function output_caching_info($lastcachetime, $quizid, $groupstudentsjoins, $whichattempts, $reporturl)
-    {
-        global $DB, $OUTPUT;
-
-        if (empty($lastcachetime)) {
             return '';
         }
-
-        // Find the number of attempts since the cached statistics were computed.
-        list($fromqa, $whereqa, $qaparams) = quiz_exaqueststatistics_attempts_sql($quizid, $groupstudentsjoins, $whichattempts, true);
-        $count = $DB->count_records_sql("
-                SELECT COUNT(1)
-                FROM $fromqa
-                WHERE $whereqa
-                AND quiza.timefinish > {$lastcachetime}", $qaparams);
-
-        if (!$count) {
-            $count = 0;
-        }
-
-        // Generate the output.
-        $a = new stdClass();
-        $a->lastcalculated = format_time(time() - $lastcachetime);
-        $a->count = $count;
-
-        $recalcualteurl = new moodle_url($reporturl,
-            array('recalculate' => 1, 'sesskey' => sesskey()));
-        $output = '';
-        $output .= $OUTPUT->box_start(
-            'boxaligncenter generalbox boxwidthnormal mdl-align', 'cachingnotice');
-        $output .= get_string('lastcalculated', 'quiz_exaqueststatistics', $a);
-        $output .= $OUTPUT->single_button($recalcualteurl,
-            get_string('recalculatenow', 'quiz_exaqueststatistics'));
-        $output .= $OUTPUT->box_end(true);
-
-        return $output;
-    }
-
-    /**
-     * Clear the cached data for a particular report configuration. This will trigger a re-computation the next time the report
-     * is displayed.
-     *
-     * @param $qubaids qubaid_condition
-     */
-    public function clear_cached_data($qubaids)
-    {
-        global $DB;
-        $DB->delete_records('quiz_exaqueststatistics', array('hashcode' => $qubaids->get_hash_code()));
-        $DB->delete_records('question_statistics', array('hashcode' => $qubaids->get_hash_code()));
-        $DB->delete_records('question_response_analysis', array('hashcode' => $qubaids->get_hash_code()));
-    }
-
-    /**
-     * Load the questions in this quiz and add some properties to the objects needed in the reports.
-     *
-     * @param object $quiz the quiz.
-     * @return array of questions for this quiz.
-     */
-    public function load_and_initialise_questions_for_calculations($quiz)
-    {
-        // Load the questions.
-        $questions = quiz_report_get_significant_questions($quiz);
-        $questiondata = [];
-        foreach ($questions as $qs => $question) {
-            if ($question->qtype === 'random') {
-                $question->id = 0;
-                $question->name = get_string('random', 'quiz');
-                $question->questiontext = get_string('random', 'quiz');
-                $question->parenttype = 'random';
-                $questiondata[$question->slot] = $question;
-            } else if ($question->qtype === 'missingtype') {
-                $question->id = is_numeric($question->id) ? (int)$question->id : 0;
-                $questiondata[$question->slot] = $question;
-                $question->name = get_string('deletedquestion', 'qtype_missingtype');
-                $question->questiontext = get_string('deletedquestiontext', 'qtype_missingtype');
-            } else {
-                $q = question_bank::load_question_data($question->id);
-                $q->maxmark = $question->maxmark;
-                $q->slot = $question->slot;
-                $q->number = $question->number;
-                $q->parenttype = null;
-                $questiondata[$question->slot] = $q;
-            }
-        }
-
-        return $questiondata;
-    }
-
-    /**
-     * Output all response analysis for all questions, sub-questions and variants. For download in a number of formats.
-     *
-     * @param $qubaids
-     * @param $questions
-     * @param $questionstats
-     * @param $reporturl
-     * @param $whichtries string
-     */
-    protected function output_all_question_response_analysis($qubaids,
-                                                             $questions,
-                                                             $questionstats,
-                                                             $reporturl,
-                                                             $whichtries = question_attempt::LAST_TRY)
-    {
-        foreach ($questions as $slot => $question) {
-            if (question_bank::get_qtype(
-                $question->qtype, false)->can_analyse_responses()
-            ) {
-                if ($questionstats->for_slot($slot)->get_variants()) {
-                    foreach ($questionstats->for_slot($slot)->get_variants() as $variantno) {
-                        $this->output_individual_question_response_analysis($question,
-                            $variantno,
-                            $questionstats->for_slot($slot, $variantno)->s,
-                            $reporturl,
-                            $qubaids,
-                            $whichtries);
-                    }
-                } else {
-                    $this->output_individual_question_response_analysis($question,
-                        null,
-                        $questionstats->for_slot($slot)->s,
-                        $reporturl,
-                        $qubaids,
-                        $whichtries);
-                }
-            } else if ($subqids = $questionstats->for_slot($slot)->get_sub_question_ids()) {
-                foreach ($subqids as $subqid) {
-                    if ($variants = $questionstats->for_subq($subqid)->get_variants()) {
-                        foreach ($variants as $variantno) {
-                            $this->output_individual_question_response_analysis(
-                                $questionstats->for_subq($subqid, $variantno)->question,
-                                $variantno,
-                                $questionstats->for_subq($subqid, $variantno)->s,
-                                $reporturl,
-                                $qubaids,
-                                $whichtries);
-                        }
-                    } else {
-                        $this->output_individual_question_response_analysis(
-                            $questionstats->for_subq($subqid)->question,
-                            null,
-                            $questionstats->for_subq($subqid)->s,
-                            $reporturl,
-                            $qubaids,
-                            $whichtries);
-
-                    }
-                }
-            }
-        }
-    }
-
-    /**
-     * Load question stats for a quiz
-     *
-     * @param int $quizid question usage
-     * @return all_calculated_for_qubaid_condition question stats
-     */
-    public function calculate_questions_stats_for_question_bank(int $quizid): all_calculated_for_qubaid_condition
-    {
-        global $DB;
-        $quiz = $DB->get_record('quiz', ['id' => $quizid], '*', MUST_EXIST);
-        $questions = $this->load_and_initialise_questions_for_calculations($quiz);
-
-        [, $questionstats] = $this->get_all_stats_and_analysis($quiz,
-            $quiz->grademethod, question_attempt::ALL_TRIES, new \core\dml\sql_join(), $questions);
-
-        return $questionstats;
     }
 }
